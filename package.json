@@ -16,7 +16,8 @@
   "files": [
     "dist",
     "NOTICE.md",
-    "README.md"
+    "README.md",
+    "LICENSES"
   ],
   "sideEffects": false,
   "scripts": {
