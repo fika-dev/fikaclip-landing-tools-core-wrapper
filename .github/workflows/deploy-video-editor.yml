@@ -1,0 +1,149 @@
+name: Build and Publish Video Editor
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "NOTICE.md"
+      - "LICENSES/**"
+      - ".github/workflows/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "NOTICE.md"
+      - "LICENSES/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-editor-publish
+  cancel-in-progress: false
+
+env:
+  PACKAGE_DIR: .
+  S3_BUCKET: fikaclip-landing-editor
+  S3_PREFIX: video-editor
+  PUBLIC_BASE_URL: https://landing-editor.fikad.boo
+  npm_config_cache: /tmp/.npm
+
+jobs:
+  build-test:
+    name: Typecheck and synthetic tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run synthetic use-case tests
+        run: npm run test:synthetic:usecases
+
+      - name: Build package
+        run: npm run build
+
+  publish:
+    name: Publish immutable package artifact
+    needs: build-test
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Build package
+        run: npm run build
+
+      - name: Create package artifact
+        id: pack
+        run: |
+          set -euo pipefail
+          PACK_OUTPUT="$(npm pack --pack-destination dist --ignore-scripts)"
+          VERSION="$(node -p "require('./package.json').version")"
+          PACKAGE_NAME="$(basename "$PACK_OUTPUT")"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "package-name=${PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Check immutable package
+        id: immutable
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.EDITOR_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.EDITOR_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ap-northeast-2
+          PACKAGE_NAME: ${{ steps.pack.outputs.package-name }}
+        run: |
+          set -euo pipefail
+          PACKAGE_KEY="${S3_PREFIX}/${{ steps.pack.outputs.version }}/${PACKAGE_NAME}"
+          LOCAL_PACKAGE="dist/${PACKAGE_NAME}"
+          REMOTE_PACKAGE="${RUNNER_TEMP}/${PACKAGE_NAME}"
+
+          if aws s3api head-object --bucket "${S3_BUCKET}" --key "${PACKAGE_KEY}" >/dev/null 2>&1; then
+            aws s3 cp "s3://${S3_BUCKET}/${PACKAGE_KEY}" "${REMOTE_PACKAGE}" >/dev/null
+            LOCAL_INTEGRITY="sha512-$(openssl dgst -sha512 -binary "${LOCAL_PACKAGE}" | base64 -w 0)"
+            REMOTE_INTEGRITY="sha512-$(openssl dgst -sha512 -binary "${REMOTE_PACKAGE}" | base64 -w 0)"
+            if [[ "${LOCAL_INTEGRITY}" != "${REMOTE_INTEGRITY}" ]]; then
+              echo "Published version ${PACKAGE_KEY} already exists with different contents."
+              echo "Bump package.json before publishing changed contents."
+              exit 1
+            fi
+            echo "package-exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "package-exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload package and runtime
+        if: steps.immutable.outputs.package-exists != 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.EDITOR_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.EDITOR_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ap-northeast-2
+        run: |
+          set -euo pipefail
+          TARGET="s3://${S3_BUCKET}/${S3_PREFIX}/${{ steps.pack.outputs.version }}"
+          aws s3 sync dist/ "${TARGET}/" --delete --cache-control "public,max-age=31536000,immutable" --exclude "runtime/ffmpeg-core.wasm"
+          aws s3 cp dist/runtime/ffmpeg-core.wasm "${TARGET}/runtime/ffmpeg-core.wasm" --content-type "application/wasm" --cache-control "public,max-age=31536000,immutable" --metadata-directive REPLACE
+
+      - name: Print published paths
+        run: |
+          echo "Package URL ${PUBLIC_BASE_URL}/${S3_PREFIX}/${{ steps.pack.outputs.version }}/${{ steps.pack.outputs.package-name }}"
+          echo "Runtime URL ${PUBLIC_BASE_URL}/${S3_PREFIX}/${{ steps.pack.outputs.version }}/runtime"
