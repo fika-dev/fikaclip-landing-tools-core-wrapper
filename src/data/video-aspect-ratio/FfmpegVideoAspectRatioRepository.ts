@@ -9,7 +9,7 @@ import type {
   VideoAspectRatio,
   VideoAspectRatioRepository,
 } from "../../domain";
-import { FfmpegRuntime, readFfmpegBytes, readFfmpegText, type FfmpegRuntimeConfig } from "../ffmpeg/FfmpegRuntime";
+import { FfmpegRuntime, readFfmpegBytes, type FfmpegRuntimeConfig } from "../ffmpeg/FfmpegRuntime";
 
 const MIME_TYPE_BY_FORMAT: Record<VideoContainerFormat, string> = {
   mp4: "video/mp4",
@@ -18,21 +18,24 @@ const MIME_TYPE_BY_FORMAT: Record<VideoContainerFormat, string> = {
   mkv: "video/x-matroska",
 };
 
-export type FfmpegVideoAspectRatioRepositoryConfig = FfmpegRuntimeConfig;
+type AspectRatioRuntime = Pick<FfmpegRuntime, "writeFile" | "readFile" | "deleteFile" | "exec" | "onProgress" | "offProgress" | "terminate">;
+
+export type FfmpegVideoAspectRatioRepositoryConfig = FfmpegRuntimeConfig & {
+  runtime?: AspectRatioRuntime;
+};
 
 export class FfmpegVideoAspectRatioRepository implements VideoAspectRatioRepository {
   readonly id = "ffmpeg-video-aspect-ratio";
 
-  private readonly runtime: FfmpegRuntime;
+  private readonly runtime: AspectRatioRuntime;
 
   constructor(config: FfmpegVideoAspectRatioRepositoryConfig) {
-    this.runtime = new FfmpegRuntime(config);
+    this.runtime = config.runtime ?? new FfmpegRuntime(config);
   }
 
   async execute(entity: EditVideoAspectRatioEntity): Promise<EditVideoAspectRatioEntity> {
     const { command, jobId } = entity;
     const inputPath = createInputPath(command.fileName, command.source);
-    const probePath = `${inputPath}.probe.json`;
     let output: ResolvedAspectRatioOutput | undefined;
     let outputPath: string | undefined;
     const progressCallback: ProgressEventCallback = ({ progress }) => {
@@ -45,10 +48,7 @@ export class FfmpegVideoAspectRatioRepository implements VideoAspectRatioReposit
     try {
       this.runtime.onProgress(progressCallback);
       await this.runtime.writeFile(inputPath, sourceToFileLike(command.source), { signal: command.job?.signal });
-      const sourceProfile = hasCompleteOutput(command.output)
-        ? command.output
-        : await probeSource(inputPath, probePath, this.runtime, command.job?.signal);
-      output = resolveOutput(command.output, sourceProfile);
+      output = requireCompleteOutput(command.output);
       if (output.videoCodec === "copy") {
         throw new Error("Video ratio editing requires a video codec because padding cannot be used with video copy.");
       }
@@ -110,7 +110,6 @@ export class FfmpegVideoAspectRatioRepository implements VideoAspectRatioReposit
       } else {
         await this.runtime.deleteFile(inputPath);
         if (outputPath) await this.runtime.deleteFile(outputPath);
-        await this.runtime.deleteFile(probePath);
       }
     }
   }
@@ -150,89 +149,18 @@ type SourceProfile = {
 
 type ResolvedAspectRatioOutput = SourceProfile;
 
-function hasCompleteOutput(
+function requireCompleteOutput(
   output: EditVideoAspectRatioEntity["command"]["output"],
-): output is ResolvedAspectRatioOutput {
-  return Boolean(output?.format && output.videoCodec && output.audioCodec);
-}
-
-function resolveOutput(output: EditVideoAspectRatioEntity["command"]["output"], source: SourceProfile) {
-  const format = output?.format ?? source.format;
-
-  return {
-    format,
-    videoCodec: output?.videoCodec ?? source.videoCodec,
-    audioCodec: output?.audioCodec ?? source.audioCodec,
-  };
-}
-
-async function probeSource(
-  inputPath: string,
-  probePath: string,
-  runtime: FfmpegRuntime,
-  signal?: AbortSignal,
-): Promise<SourceProfile> {
-  const exitCode = await runtime.ffprobe(
-    ["-v", "error", "-print_format", "json", "-show_streams", "-show_format", "-o", probePath, inputPath],
-    { signal },
-  );
-  if (exitCode !== 0) {
-    throw new Error(`ffprobe failed with exit code ${exitCode}.`);
-  }
-
-  const probeData = await runtime.readFile(probePath, undefined, { signal });
-  const probe = JSON.parse(readFfmpegText(probeData)) as {
-    streams?: Array<{ codec_type?: string; codec_name?: string }>;
-    format?: { format_name?: string };
-  };
-  const videoCodec = toVideoCodec(probe.streams?.find((stream) => stream.codec_type === "video")?.codec_name);
-
-  if (!videoCodec) {
-    throw new Error("The source video codec is not supported for aspect ratio editing.");
-  }
-
-  const audioCodecName = probe.streams?.find((stream) => stream.codec_type === "audio")?.codec_name;
-  const audioCodec = toAudioCodec(audioCodecName);
-
-  if (audioCodecName && !audioCodec) {
-    throw new Error("The source audio codec is not supported for aspect ratio editing.");
+): ResolvedAspectRatioOutput {
+  if (!output?.format || !output.videoCodec || !output.audioCodec) {
+    throw new Error("Video ratio editing requires an inspected source format and codec profile.");
   }
 
   return {
-    format: toContainerFormat(probe.format?.format_name),
-    videoCodec,
-    audioCodec: audioCodec ?? "none",
+    format: output.format,
+    videoCodec: output.videoCodec,
+    audioCodec: output.audioCodec,
   };
-}
-
-function toContainerFormat(formatName: string | undefined): VideoContainerFormat {
-  const formats = (formatName ?? "").split(",");
-  if (formats.includes("webm")) return "webm";
-  if (formats.includes("matroska")) return "mkv";
-  if (formats.includes("mov")) return "mov";
-  if (formats.includes("mp4")) return "mp4";
-  throw new Error("The source video container is not supported for aspect ratio editing.");
-}
-
-function toVideoCodec(codecName: string | undefined): VideoCodec | undefined {
-  return {
-    h264: "h264",
-    hevc: "h265",
-    h265: "h265",
-    vp8: "vp8",
-    vp9: "vp9",
-    av1: "av1",
-  }[codecName ?? ""] as VideoCodec | undefined;
-}
-
-function toAudioCodec(codecName: string | undefined): AudioCodec | undefined {
-  if (!codecName) return undefined;
-
-  return {
-    aac: "aac",
-    opus: "opus",
-    mp3: "mp3",
-  }[codecName] as AudioCodec | undefined;
 }
 
 function sanitizeFileName(fileName: string) {
