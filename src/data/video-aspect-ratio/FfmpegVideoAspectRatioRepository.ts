@@ -45,9 +45,7 @@ export class FfmpegVideoAspectRatioRepository implements VideoAspectRatioReposit
     try {
       this.runtime.onProgress(progressCallback);
       await this.runtime.writeFile(inputPath, sourceToFileLike(command.source), { signal: command.job?.signal });
-      const sourceProfile = hasCompleteOutput(command.output)
-        ? command.output
-        : await probeSource(inputPath, probePath, this.runtime, command.job?.signal);
+      const sourceProfile = await probeSource(inputPath, probePath, this.runtime, command.job?.signal);
       output = resolveOutput(command.output, sourceProfile);
       if (output.videoCodec === "copy") {
         throw new Error("Video ratio editing requires a video codec because padding cannot be used with video copy.");
@@ -149,12 +147,6 @@ type SourceProfile = {
 };
 
 type ResolvedAspectRatioOutput = SourceProfile;
-
-function hasCompleteOutput(
-  output: EditVideoAspectRatioEntity["command"]["output"],
-): output is ResolvedAspectRatioOutput {
-  return Boolean(output?.format && output.videoCodec && output.audioCodec);
-}
 
 function resolveOutput(output: EditVideoAspectRatioEntity["command"]["output"], source: SourceProfile) {
   const format = output?.format ?? source.format;
