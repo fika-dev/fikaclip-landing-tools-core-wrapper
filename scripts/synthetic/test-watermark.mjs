@@ -1,11 +1,14 @@
+import assert from "node:assert/strict";
 import path from "node:path";
 
-import { UseCase } from "../../dist/index.js";
+import { FfmpegWatermarkVideoRepository, UseCase } from "../../dist/index.js";
 
 import { createSyntheticFixture } from "./createSyntheticFixture.mjs";
 import { assertMedia, assertUseCaseExitCodeMinusOne, probeMedia, runCommand } from "./utils.mjs";
 
 export async function testWatermark() {
+  await testWatermarkExitCodeMinusOne();
+
   const fixture = await createSyntheticFixture();
   const watermarkPath = path.join(fixture.workDir, "watermark.png");
   const outputPath = path.join(fixture.workDir, "watermark.mp4");
@@ -39,6 +42,54 @@ export async function testWatermark() {
   } finally {
     await fixture.cleanup();
   }
+}
+
+async function testWatermarkExitCodeMinusOne() {
+  const runtime = new ExitCodeFailureRuntime();
+  const repository = new FfmpegWatermarkVideoRepository({
+    coreURL: "https://example.invalid/ffmpeg-core.js",
+    wasmURL: "https://example.invalid/ffmpeg-core.wasm",
+    runtime,
+  });
+
+  await assert.rejects(
+    () =>
+      repository.execute({
+        jobId: "watermark-exit-minus-one",
+        command: {
+          operation: "watermark",
+          source: { type: "blob", blob: new Blob([new Uint8Array([0])], { type: "video/mp4" }) },
+          fileName: "input.mp4",
+          layer: {
+            image: { type: "blob", blob: new Blob([new Uint8Array([1])], { type: "image/png" }) },
+            fileName: "watermark.png",
+            x: 0,
+            y: 0,
+          },
+        },
+      }),
+    /ffmpeg watermark failed with exit code -1\./,
+  );
+}
+
+class ExitCodeFailureRuntime {
+  onProgress() {}
+
+  offProgress() {}
+
+  async writeFile() {}
+
+  async readFile() {
+    return new Uint8Array([1]);
+  }
+
+  async deleteFile() {}
+
+  async exec() {
+    return -1;
+  }
+
+  terminate() {}
 }
 
 class WatermarkProbeRepository {
