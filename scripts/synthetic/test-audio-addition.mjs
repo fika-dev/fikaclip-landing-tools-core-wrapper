@@ -1,11 +1,14 @@
+import assert from "node:assert/strict";
 import path from "node:path";
 
-import { UseCase } from "../../dist/index.js";
+import { FfmpegAddAudioRepository, UseCase } from "../../dist/index.js";
 
 import { createSyntheticFixture } from "./createSyntheticFixture.mjs";
 import { assertMedia, assertUseCaseExitCodeMinusOne, probeMedia, runCommand } from "./utils.mjs";
 
 export async function testAudioAddition() {
+  await testAudioAdditionExitCodeMinusOne();
+
   const fixture = await createSyntheticFixture();
   const trackPath = path.join(fixture.workDir, "track.wav");
   const outputPath = path.join(fixture.workDir, "audio-addition.mp4");
@@ -41,6 +44,54 @@ export async function testAudioAddition() {
   } finally {
     await fixture.cleanup();
   }
+}
+
+async function testAudioAdditionExitCodeMinusOne() {
+  const runtime = new ExitCodeFailureRuntime();
+  const repository = new FfmpegAddAudioRepository({
+    coreURL: "https://example.invalid/ffmpeg-core.js",
+    wasmURL: "https://example.invalid/ffmpeg-core.wasm",
+    runtime,
+  });
+
+  await assert.rejects(
+    () =>
+      repository.execute({
+        jobId: "audio-addition-exit-minus-one",
+        command: {
+          operation: "add-audio",
+          source: { type: "blob", blob: new Blob([new Uint8Array([0])], { type: "video/mp4" }) },
+          fileName: "input.mp4",
+          tracks: [
+            {
+              source: { type: "blob", blob: new Blob([new Uint8Array([1])], { type: "audio/wav" }) },
+              fileName: "track.wav",
+            },
+          ],
+        },
+      }),
+    /ffmpeg add-audio failed with exit code -1\./,
+  );
+}
+
+class ExitCodeFailureRuntime {
+  onProgress() {}
+
+  offProgress() {}
+
+  async writeFile() {}
+
+  async readFile() {
+    return new Uint8Array([1]);
+  }
+
+  async deleteFile() {}
+
+  async exec() {
+    return -1;
+  }
+
+  terminate() {}
 }
 
 class AdditionProbeRepository {
