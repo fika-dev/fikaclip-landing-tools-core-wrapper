@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 
-import { FfmpegVideoAspectRatioRepository, UseCase } from "../../dist/index.js";
+import { BrowserMediaProbeRepository, FfmpegVideoAspectRatioRepository, UseCase } from "../../dist/index.js";
 
 import { createSyntheticFixture } from "./createSyntheticFixture.mjs";
 import { assertMedia, assertUseCaseExitCodeMinusOne, probeMedia, runCommand } from "./utils.mjs";
 
 export async function testVideoAspectRatio() {
+  await testBrowserMediaProbeWaitsForUsableMetadata();
   await testBrowserWasmFfprobeFailureDoesNotInvokeFfprobe();
 
   const fixture = await createSyntheticFixture();
@@ -32,6 +33,50 @@ export async function testVideoAspectRatio() {
     });
   } finally {
     await fixture.cleanup();
+  }
+}
+
+async function testBrowserMediaProbeWaitsForUsableMetadata() {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const video = {
+    duration: Number.NaN,
+    videoHeight: 0,
+    videoWidth: 0,
+    oncanplay: null,
+    onerror: null,
+    onloadeddata: null,
+    onloadedmetadata: null,
+    load() {},
+    removeAttribute() {},
+    set src(value) {
+      this.source = value;
+      queueMicrotask(() => {
+        this.onloadedmetadata?.();
+        this.duration = 30.5;
+        this.videoWidth = 480;
+        this.videoHeight = 854;
+        this.onloadeddata?.();
+      });
+    },
+  };
+
+  globalThis.window = {
+    clearTimeout,
+    setTimeout,
+  };
+  globalThis.document = { createElement: () => video };
+
+  try {
+    const entity = await new BrowserMediaProbeRepository().execute({
+      command: { source: { type: "url", url: "https://example.invalid/input.mp4" }, fileName: "input.mp4" },
+      jobId: "browser-probe-metadata-ready",
+    });
+    assert.deepEqual(entity.result?.metadata.size, { width: 480, height: 854 });
+    assert.equal(entity.result?.metadata.durationSeconds, 30.5);
+  } finally {
+    globalThis.window = previousWindow;
+    globalThis.document = previousDocument;
   }
 }
 
