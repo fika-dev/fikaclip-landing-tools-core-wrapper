@@ -104,7 +104,19 @@ async function inspectBrowserVideoMetadata(source: MediaSource, signal?: AbortSi
       reject(createAbortError(signal));
     };
 
-    const timeoutId = window.setTimeout(() => finish({}), 7000);
+    const readMetadata = () => {
+      const durationSeconds = Number.isFinite(video.duration) ? video.duration : undefined;
+      const size =
+        video.videoWidth > 0 && video.videoHeight > 0
+          ? { width: video.videoWidth, height: video.videoHeight }
+          : undefined;
+
+      if (durationSeconds !== undefined || size) {
+        finish({ durationSeconds, size });
+      }
+    };
+
+    const timeoutId = window.setTimeout(() => readMetadata(), 7000);
 
     signal?.addEventListener("abort", handleAbort, { once: true });
     video.preload = "metadata";
@@ -115,15 +127,9 @@ async function inspectBrowserVideoMetadata(source: MediaSource, signal?: AbortSi
       video.crossOrigin = source.crossOrigin;
     }
 
-    video.onloadedmetadata = () => {
-      finish({
-        durationSeconds: Number.isFinite(video.duration) ? video.duration : undefined,
-        size:
-          video.videoWidth > 0 && video.videoHeight > 0
-            ? { width: video.videoWidth, height: video.videoHeight }
-            : undefined,
-      });
-    };
+    video.onloadedmetadata = readMetadata;
+    video.onloadeddata = readMetadata;
+    video.oncanplay = readMetadata;
     video.onerror = () => finish({});
     video.src = src;
   });
