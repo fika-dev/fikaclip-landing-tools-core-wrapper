@@ -3,7 +3,7 @@ import path from "node:path";
 import { UseCase } from "../../dist/index.js";
 
 import { createSyntheticFixture } from "./createSyntheticFixture.mjs";
-import { assertMedia, probeMedia, runCommand } from "./utils.mjs";
+import { assertMedia, assertUseCaseExitCodeMinusOne, probeMedia, runCommand } from "./utils.mjs";
 
 export async function testWatermark() {
   const fixture = await createSyntheticFixture();
@@ -24,6 +24,10 @@ export async function testWatermark() {
       "-y",
       watermarkPath,
     ]);
+    await assertUseCaseExitCodeMinusOne({
+      label: "watermark use case",
+      command: { sourcePath: fixture.inputPath },
+    });
     const useCase = new UseCase([new WatermarkProbeRepository(), new WatermarkRepository(outputPath, watermarkPath)]);
     const entity = await useCase.execute({ command: { sourcePath: fixture.inputPath }, jobId: "watermark" });
     await assertMedia(entity.result.path, {
