@@ -40,7 +40,7 @@ export class FfmpegMediaProbeRepository implements MediaProbeRepository {
     try {
       await this.runtime.writeFile(inputPath, sourceToFileLike(command.source), { signal: command.job?.signal });
       const exitCode = await this.runtime.ffprobe(
-        ["-v", "error", "-show_streams", "-show_format", "-of", "json", "-o", outputPath, inputPath],
+        ["-v", "error", "-show_streams", "-show_format", "-of", "json", inputPath, "-o", outputPath],
         { signal: command.job?.signal },
       );
       if (exitCode !== 0) throw new Error(`ffprobe failed with exit code ${exitCode}.`);
