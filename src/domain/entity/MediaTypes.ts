@@ -43,6 +43,15 @@ export type MediaCodecInfo = {
   channels?: number;
 };
 
+export type AudioTrackInfo = MediaCodecInfo & {
+  index: number;
+  streamIndex: number;
+  language?: string;
+  title?: string;
+  isDefault?: boolean;
+  isForced?: boolean;
+};
+
 export type MediaMetadata = {
   durationSeconds?: Seconds;
   size?: Size;

@@ -124,6 +124,7 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
             "-i",
             inputPath,
             "-vn",
+            ...(command.audioTrackIndex === undefined ? [] : ["-map", `0:a:${command.audioTrackIndex}`]),
             "-c:a",
             toAudioCodec(command.audioCodec ?? defaultAudioCodec(command.format)),
             outputPath,

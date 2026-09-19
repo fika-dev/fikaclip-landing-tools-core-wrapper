@@ -1,5 +1,6 @@
 import type {
   AudioCodec,
+  AudioTrackInfo,
   MediaMetadata,
   MediaSource,
   VideoCodec,
@@ -39,6 +40,7 @@ export type MediaInspectionResult = {
   rawFormat?: string;
   rawVideoCodec?: string;
   rawAudioCodec?: string;
+  audioTracks?: AudioTrackInfo[];
 };
 
 export type VideoUploadPolicyOperation = "inspect" | "remux" | "transcode" | "heavy-transcode";

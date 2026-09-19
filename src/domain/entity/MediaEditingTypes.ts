@@ -54,6 +54,7 @@ export type MediaEditCommand =
       fileName?: string;
       format: AudioFormat;
       audioCodec?: Exclude<AudioCodec, "none" | "copy">;
+      audioTrackIndex?: number;
       job?: MediaToolJobOptions;
     }
   | {
