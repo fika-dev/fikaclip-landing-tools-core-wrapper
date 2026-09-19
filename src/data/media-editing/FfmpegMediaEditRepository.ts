@@ -136,8 +136,6 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
           args: [
             "-i",
             inputPath,
-            "-vf",
-            "null",
             "-af",
             buildVolumeFilter(command.segments),
             "-c:v",
