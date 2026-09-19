@@ -32,6 +32,13 @@
 - Match existing app rules when a local convention exists, but do not force a common interface when it makes the code less type-safe.
 - Media editing commands use a discriminated `MediaEditEntity`; keep operation-specific payloads in `MediaEditingTypes.ts` and expose one `*Repository` adapter per feature.
 
+## Pull Request Convention
+
+- PR titles must use `feat:`, `fix:`, `refactor:`, or `docs:` followed by a Korean change summary.
+- PR bodies must start with a `Summary` section written in Korean.
+- Keep a `Verification` section in the existing format with commands and results.
+- Library PRs target `main`; this repository does not use a `staging` branch.
+
 ## Video Aspect Ratio Semantics
 
 - The selected ratio describes the output frame.
