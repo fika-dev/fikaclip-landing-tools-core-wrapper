@@ -25,14 +25,18 @@ const AUDIO_MIME_TYPES: Record<AudioFormat, string> = {
   ogg: "audio/ogg",
 };
 
-export type FfmpegMediaEditRepositoryConfig = FfmpegRuntimeConfig;
+type MediaEditRuntime = Pick<FfmpegRuntime, "writeFile" | "readFile" | "deleteFile" | "exec" | "onProgress" | "offProgress" | "terminate">;
+
+export type FfmpegMediaEditRepositoryConfig = FfmpegRuntimeConfig & {
+  runtime?: MediaEditRuntime;
+};
 
 export class FfmpegMediaEditRepository implements MediaEditRepository {
   readonly id: string = "ffmpeg-media-edit";
-  protected readonly runtime: FfmpegRuntime;
+  protected readonly runtime: MediaEditRuntime;
 
   constructor(config: FfmpegMediaEditRepositoryConfig) {
-    this.runtime = new FfmpegRuntime(config);
+    this.runtime = config.runtime ?? new FfmpegRuntime(config);
   }
 
   async execute(entity: MediaEditEntity): Promise<MediaEditEntity> {
