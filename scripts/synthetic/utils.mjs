@@ -1,5 +1,8 @@
 import { execFile } from "node:child_process";
+import assert from "node:assert/strict";
 import { promisify } from "node:util";
+
+import { UseCase } from "../../dist/index.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -48,6 +51,26 @@ export async function assertMedia(filePath, expected) {
 export function assertEqual(label, actual, expected) {
   if (actual !== expected) {
     throw new Error(`${label}: expected ${expected}, received ${actual}`);
+  }
+}
+
+export async function assertUseCaseExitCodeMinusOne({ label, command }) {
+  const useCase = new UseCase([new ExitCodeFailureRepository(label)]);
+
+  await assert.rejects(
+    () => useCase.execute({ command }),
+    (error) => error instanceof Error && error.message === `${label} failed with exit code -1.`,
+  );
+}
+
+class ExitCodeFailureRepository {
+  constructor(label) {
+    this.label = label;
+    this.id = `synthetic-${label}-exit-minus-one`;
+  }
+
+  async execute() {
+    throw new Error(`${this.label} failed with exit code -1.`);
   }
 }
 

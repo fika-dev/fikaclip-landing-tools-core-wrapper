@@ -3,13 +3,20 @@ import path from "node:path";
 import { UseCase } from "../../dist/index.js";
 
 import { createSyntheticFixture } from "./createSyntheticFixture.mjs";
-import { assertMedia, probeMedia, runCommand } from "./utils.mjs";
+import { assertMedia, assertUseCaseExitCodeMinusOne, probeMedia, runCommand } from "./utils.mjs";
 
 export async function testVideoFormatConversion() {
   const fixture = await createSyntheticFixture();
   const outputPath = path.join(fixture.workDir, "format-converted.webm");
 
   try {
+    await assertUseCaseExitCodeMinusOne({
+      label: "video format conversion use case",
+      command: {
+        sourcePath: fixture.inputPath,
+        output: { format: "webm", videoCodec: "vp9", audioCodec: "opus" },
+      },
+    });
     const useCase = new UseCase([new ProbeRepository(), new FormatConversionRepository(outputPath)]);
     const entity = await useCase.execute({
       command: {

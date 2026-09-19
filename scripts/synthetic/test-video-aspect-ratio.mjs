@@ -3,13 +3,17 @@ import path from "node:path";
 import { UseCase } from "../../dist/index.js";
 
 import { createSyntheticFixture } from "./createSyntheticFixture.mjs";
-import { assertMedia, probeMedia, runCommand } from "./utils.mjs";
+import { assertMedia, assertUseCaseExitCodeMinusOne, probeMedia, runCommand } from "./utils.mjs";
 
 export async function testVideoAspectRatio() {
   const fixture = await createSyntheticFixture();
   const outputPath = path.join(fixture.workDir, "aspect-ratio.mp4");
 
   try {
+    await assertUseCaseExitCodeMinusOne({
+      label: "video aspect ratio use case",
+      command: { sourcePath: fixture.inputPath, aspectRatio: "9:16" },
+    });
     const useCase = new UseCase([new ProbeRepository(), new AspectRatioRepository(outputPath)]);
     const entity = await useCase.execute({
       command: { sourcePath: fixture.inputPath, aspectRatio: "9:16" },
