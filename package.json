@@ -26,7 +26,10 @@
     "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
     "build:bundle": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2020 --sourcemap --outfile=dist/index.js",
     "test:synthetic:usecases": "npm run build && node scripts/synthetic/run-all.mjs",
+    "test:audio-addition:build": "esbuild src/test/audio-addition/*.test.ts --bundle --platform=node --format=esm --target=node22 --outdir=dist-test --out-extension:.js=.mjs --external:@ffmpeg/*",
+    "test:audio-addition": "npm run test:audio-addition:build && node --test dist-test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:test": "tsc -p tsconfig.test.json",
     "pack:artifact": "npm run build && npm pack --pack-destination dist"
   },
   "dependencies": {
@@ -35,6 +38,7 @@
     "@ffmpeg/util": "^0.12.2"
   },
   "devDependencies": {
+    "@types/node": "^22.10.2",
     "esbuild": "^0.25.9",
     "typescript": "^5.9.2"
   }
