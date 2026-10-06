@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 
 import type { MediaEditCommand, MediaSource } from "../../index";
 
+import type { AudioSegmentWindow } from "./AudioSegmentWindow";
 import type { CodecSampleVideo } from "./CodecSampleVideo";
 import type { TestMediaEditUseCase } from "./createMediaEditingUseCase";
 import { createTestWorkspace } from "./createTestWorkspace";
@@ -34,6 +35,8 @@ export type RunMediaEditCaseOptions = {
   buildCommand: (context: MediaEditCaseContext) => MediaEditCommand | Promise<MediaEditCommand>;
   /** Decode the output's first frame so pixels can be asserted. */
   captureFrame?: boolean;
+  /** Measure loudness over these slices, for claims about a time range. */
+  segmentWindows?: readonly AudioSegmentWindow[];
 };
 
 export type MediaEditCaseOutcome = {
@@ -44,6 +47,8 @@ export type MediaEditCaseOutcome = {
   loudness: AudioLoudness;
   /** Present only when `captureFrame` was requested. */
   frame?: FramePixels;
+  /** Present only when `segmentWindows` was requested, in the same order. */
+  segments?: AudioLoudness[];
 };
 
 /**
@@ -52,7 +57,7 @@ export type MediaEditCaseOutcome = {
  * declare its command and its expectations.
  */
 export async function runMediaEditCase(options: RunMediaEditCaseOptions): Promise<MediaEditCaseOutcome> {
-  const { sample, createUseCase, buildCommand, captureFrame } = options;
+  const { sample, createUseCase, buildCommand, captureFrame, segmentWindows } = options;
   const workspace = await createTestWorkspace(`media-edit-${sample.container}`);
 
   try {
@@ -64,7 +69,10 @@ export async function runMediaEditCase(options: RunMediaEditCaseOptions): Promis
     const result = await useCase.execute(command).catch((error: unknown) => {
       throw describeFailure(error, sample, command, useCase.runtime);
     });
-    const { profile, loudness, frame } = await measureOutputBlob(workspace.dir, result, { captureFrame });
+    const { profile, loudness, frame, segments } = await measureOutputBlob(workspace.dir, result, {
+      captureFrame,
+      ...(segmentWindows === undefined ? {} : { segmentWindows }),
+    });
 
     return {
       resultFileName: result.fileName,
@@ -73,6 +81,7 @@ export async function runMediaEditCase(options: RunMediaEditCaseOptions): Promis
       profile,
       loudness,
       ...(frame === undefined ? {} : { frame }),
+      ...(segments === undefined ? {} : { segments }),
     };
   } finally {
     await workspace.cleanup();

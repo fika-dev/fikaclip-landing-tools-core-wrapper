@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import type { AudioSegmentWindow } from "./AudioSegmentWindow";
 import { decodeMediaStreams, type DecodeReport } from "./decodeMediaStreams";
 import { detectAudioLoudness, type AudioLoudness } from "./detectAudioLoudness";
 import { readFramePixels, type FramePixels } from "./FramePixels";
@@ -13,6 +14,8 @@ export type OutputMeasurement = {
   frame?: FramePixels;
   /** Present only when `decodeCheck` was requested. */
   decode?: DecodeReport;
+  /** Loudness per requested window, in the order the windows were given. */
+  segments?: AudioLoudness[];
 };
 
 export type MeasureOutputBlobOptions = {
@@ -27,6 +30,11 @@ export type MeasureOutputBlobOptions = {
    * the packets inside do not.
    */
   decodeCheck?: boolean;
+  /**
+   * Measure loudness over these slices as well as the whole file. Needed for any
+   * claim about a specific time range rather than the output as a whole.
+   */
+  segmentWindows?: readonly AudioSegmentWindow[];
 };
 
 /**
@@ -49,7 +57,16 @@ export async function measureOutputBlob(
     detectAudioLoudness(outputPath),
     options.decodeCheck ? decodeMediaStreams(outputPath) : Promise.resolve(undefined),
   ]);
-  const measurement: OutputMeasurement = { profile, loudness, ...(decode === undefined ? {} : { decode }) };
+  const segments =
+    options.segmentWindows === undefined
+      ? undefined
+      : await Promise.all(options.segmentWindows.map((window) => detectAudioLoudness(outputPath, { window })));
+  const measurement: OutputMeasurement = {
+    profile,
+    loudness,
+    ...(decode === undefined ? {} : { decode }),
+    ...(segments === undefined ? {} : { segments }),
+  };
 
   if (!options.captureFrame || profile.width === undefined || profile.height === undefined) {
     return measurement;

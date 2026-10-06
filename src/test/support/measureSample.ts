@@ -1,3 +1,4 @@
+import type { AudioSegmentWindow } from "./AudioSegmentWindow";
 import { createTestWorkspace } from "./createTestWorkspace";
 import { decodeMediaStreams, type DecodeReport } from "./decodeMediaStreams";
 import { detectAudioLoudness, type AudioLoudness } from "./detectAudioLoudness";
@@ -10,6 +11,8 @@ export type SampleMeasurement = {
   loudness: AudioLoudness;
   frame: FramePixels;
   decode: DecodeReport;
+  /** Loudness per requested window, in the order the windows were given. */
+  segments?: AudioLoudness[];
 };
 
 /**
@@ -20,7 +23,15 @@ export type SampleMeasurement = {
  * claims about a difference, and a difference needs both sides measured. Reading
  * the source here is what makes those assertions mean anything.
  */
-export async function measureSample(sample: CodecSampleVideo): Promise<SampleMeasurement> {
+export type MeasureSampleOptions = {
+  /** Slices to measure as well as the whole file, for before/after comparison. */
+  segmentWindows?: readonly AudioSegmentWindow[];
+};
+
+export async function measureSample(
+  sample: CodecSampleVideo,
+  options: MeasureSampleOptions = {},
+): Promise<SampleMeasurement> {
   const workspace = await createTestWorkspace(`measure-${sample.container}`);
 
   try {
@@ -36,7 +47,14 @@ export async function measureSample(sample: CodecSampleVideo): Promise<SampleMea
       height: sample.height,
     });
 
-    return { profile, loudness, frame, decode };
+    const segments =
+      options.segmentWindows === undefined
+        ? undefined
+        : await Promise.all(
+            options.segmentWindows.map((window) => detectAudioLoudness(sample.filePath, { window })),
+          );
+
+    return { profile, loudness, frame, decode, ...(segments === undefined ? {} : { segments }) };
   } finally {
     await workspace.cleanup();
   }

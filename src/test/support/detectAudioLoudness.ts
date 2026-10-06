@@ -1,3 +1,4 @@
+import type { AudioSegmentWindow } from "./AudioSegmentWindow";
 import { spawnCommand } from "./spawnCommand";
 
 export type AudioLoudness = {
@@ -19,25 +20,41 @@ export type AudioLoudness = {
  */
 const SILENCE_THRESHOLD_DB = -60;
 
+export type DetectAudioLoudnessOptions = {
+  /** Measure only this slice of the timeline, rather than the whole file. */
+  window?: AudioSegmentWindow;
+  /** Which audio track to measure. Defaults to the first. */
+  trackIndex?: number;
+};
+
 /**
- * Measures the loudness of the first audio stream with the `volumedetect` filter.
+ * Measures the loudness of one audio track, optionally over a single slice of
+ * the timeline, with the `volumedetect` filter.
  *
  * Checking codec names only proves that *an* audio stream exists. This proves
- * that audible samples actually reached it, which is what distinguishes a real
- * audio insertion from an empty stream.
+ * that audible samples actually reached it, and measuring a slice is what makes
+ * "only this range changed" a checkable claim.
  *
  * `volumedetect` reports at info level, so this cannot run with `-loglevel error`.
  */
-export async function detectAudioLoudness(filePath: string): Promise<AudioLoudness> {
+export async function detectAudioLoudness(
+  filePath: string,
+  options: DetectAudioLoudnessOptions = {},
+): Promise<AudioLoudness> {
+  const { window, trackIndex = 0 } = options;
   const outcome = await spawnCommand("ffmpeg", [
     "-nostdin",
     "-hide_banner",
     "-loglevel",
     "info",
+    // `-ss` before `-i` seeks the input, which is what keeps the measurement
+    // aligned with the segment the operation was asked to change.
+    ...(window === undefined ? [] : ["-ss", String(window.startSeconds)]),
     "-i",
     filePath,
+    ...(window === undefined ? [] : ["-t", String(window.durationSeconds)]),
     "-map",
-    "0:a:0",
+    `0:a:${trackIndex}`,
     "-af",
     "volumedetect",
     "-f",
