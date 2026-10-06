@@ -4,6 +4,7 @@ import type { MediaEditCommand, MediaSource } from "../../index";
 
 import type { AudioSegmentWindow } from "./AudioSegmentWindow";
 import type { CodecSampleVideo } from "./CodecSampleVideo";
+import type { DecodeReport } from "./decodeMediaStreams";
 import type { TestMediaEditUseCase } from "./createMediaEditingUseCase";
 import { createTestWorkspace } from "./createTestWorkspace";
 import type { AudioLoudness } from "./detectAudioLoudness";
@@ -37,6 +38,11 @@ export type RunMediaEditCaseOptions = {
   captureFrame?: boolean;
   /** Measure loudness over these slices, for claims about a time range. */
   segmentWindows?: readonly AudioSegmentWindow[];
+  /**
+   * Decode the whole output and collect decoder errors. Needed for any claim
+   * that the result actually plays, which a header-only probe cannot support.
+   */
+  decodeCheck?: boolean;
 };
 
 export type MediaEditCaseOutcome = {
@@ -49,6 +55,8 @@ export type MediaEditCaseOutcome = {
   frame?: FramePixels;
   /** Present only when `segmentWindows` was requested, in the same order. */
   segments?: AudioLoudness[];
+  /** Present only when `decodeCheck` was requested. */
+  decode?: DecodeReport;
 };
 
 /**
@@ -57,7 +65,7 @@ export type MediaEditCaseOutcome = {
  * declare its command and its expectations.
  */
 export async function runMediaEditCase(options: RunMediaEditCaseOptions): Promise<MediaEditCaseOutcome> {
-  const { sample, createUseCase, buildCommand, captureFrame, segmentWindows } = options;
+  const { sample, createUseCase, buildCommand, captureFrame, segmentWindows, decodeCheck } = options;
   const workspace = await createTestWorkspace(`media-edit-${sample.container}`);
 
   try {
@@ -69,8 +77,9 @@ export async function runMediaEditCase(options: RunMediaEditCaseOptions): Promis
     const result = await useCase.execute(command).catch((error: unknown) => {
       throw describeFailure(error, sample, command, useCase.runtime);
     });
-    const { profile, loudness, frame, segments } = await measureOutputBlob(workspace.dir, result, {
+    const { profile, loudness, frame, segments, decode } = await measureOutputBlob(workspace.dir, result, {
       captureFrame,
+      ...(decodeCheck === undefined ? {} : { decodeCheck }),
       ...(segmentWindows === undefined ? {} : { segmentWindows }),
     });
 
@@ -82,6 +91,7 @@ export async function runMediaEditCase(options: RunMediaEditCaseOptions): Promis
       loudness,
       ...(frame === undefined ? {} : { frame }),
       ...(segments === undefined ? {} : { segments }),
+      ...(decode === undefined ? {} : { decode }),
     };
   } finally {
     await workspace.cleanup();

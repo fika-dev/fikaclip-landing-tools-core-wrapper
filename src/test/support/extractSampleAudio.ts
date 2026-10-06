@@ -10,6 +10,8 @@ export type ExtractSampleAudioOptions = {
   /** Omitted so the repository's own per-format default codec is exercised. */
   audioCodec?: Exclude<AudioCodec, "none" | "copy">;
   audioTrackIndex?: number;
+  /** Decode the extracted file end to end, to prove it plays. */
+  decodeCheck?: boolean;
 };
 
 /**
@@ -19,11 +21,12 @@ export type ExtractSampleAudioOptions = {
  * source's, so a WebM source is not constrained by WebM's codec profile here.
  */
 export async function extractSampleAudio(options: ExtractSampleAudioOptions): Promise<MediaEditCaseOutcome> {
-  const { sample, format, audioCodec, audioTrackIndex } = options;
+  const { sample, format, audioCodec, audioTrackIndex, decodeCheck } = options;
 
   return runMediaEditCase({
     sample,
     createUseCase: createAudioExtractionUseCase,
+    ...(decodeCheck === undefined ? {} : { decodeCheck }),
     buildCommand: ({ source }) => ({
       operation: "extract-audio",
       source,

@@ -2,6 +2,7 @@ export * from "./adjustSampleVolume";
 export * from "./assertAspectRatioFrame";
 export * from "./assertAudioUnchanged";
 export * from "./assertConversionOutput";
+export * from "./assertExtractedAudioPlays";
 export * from "./assertFrameMatchesSource";
 export * from "./assertMediaOutput";
 export * from "./assertPixelColor";
