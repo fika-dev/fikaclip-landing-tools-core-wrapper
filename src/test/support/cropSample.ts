@@ -17,15 +17,17 @@ export type CropSampleOptions = {
    * audio, chosen without consulting the output container.
    */
   output?: { format?: VideoContainerFormat; videoCodec?: VideoCodec; audioCodec?: AudioCodec };
+  captureFrame?: boolean;
 };
 
 /** Crops a rectangle out of a sample. */
 export async function cropSample(options: CropSampleOptions): Promise<MediaEditCaseOutcome> {
-  const { sample, region, output } = options;
+  const { sample, region, output, captureFrame } = options;
 
   return runMediaEditCase({
     sample,
     createUseCase: createVideoCropUseCase,
+    ...(captureFrame === undefined ? {} : { captureFrame }),
     buildCommand: ({ source }) => ({
       operation: "crop",
       source,

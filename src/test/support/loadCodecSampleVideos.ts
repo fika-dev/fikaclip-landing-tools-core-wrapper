@@ -14,13 +14,13 @@ import { resolveFixturesDir } from "./resolveFixturesDir";
  * instead of silently shrinking the matrix a test believes it covered.
  */
 export function loadCodecSampleVideos(container: VideoContainerFormat): CodecSampleVideo[] {
-  const fixturesDir = resolveFixturesDir();
-  const manifestPath = path.join(fixturesDir, "manifest.csv");
+  const videosDir = path.join(resolveFixturesDir(), "videos");
+  const manifestPath = path.join(videosDir, "manifest.csv");
   const rows = parseManifest(fs.readFileSync(manifestPath, "utf8"));
   const samples = rows
     .filter((row) => row.container === container)
     .map((row) => {
-      const filePath = path.join(fixturesDir, container, row.file);
+      const filePath = path.join(videosDir, container, row.file);
 
       if (!fs.existsSync(filePath)) {
         throw new Error(`Manifest lists ${row.file} but the fixture is missing at ${filePath}.`);

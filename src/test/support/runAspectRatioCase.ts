@@ -12,6 +12,7 @@ import type { CodecSampleVideo } from "./CodecSampleVideo";
 import { createTestWorkspace } from "./createTestWorkspace";
 import { createVideoAspectRatioUseCase } from "./createVideoAspectRatioUseCase";
 import type { AudioLoudness } from "./detectAudioLoudness";
+import type { FramePixels } from "./FramePixels";
 import { measureOutputBlob } from "./measureOutputBlob";
 import type { MediaProfile } from "./probeMediaProfile";
 
@@ -36,6 +37,8 @@ export type AspectRatioCaseOutcome = {
   resultSizeBytes: number;
   profile: MediaProfile;
   loudness: AudioLoudness;
+  /** The padding and centring can only be checked in pixels. */
+  frame?: FramePixels;
 };
 
 /**
@@ -69,7 +72,7 @@ export async function runAspectRatioCase(options: RunAspectRatioCaseOptions): Pr
         );
       });
 
-    const { profile, loudness } = await measureOutputBlob(workspace.dir, result);
+    const { profile, loudness, frame } = await measureOutputBlob(workspace.dir, result, { captureFrame: true });
 
     return {
       resultFileName: result.fileName,
@@ -77,6 +80,7 @@ export async function runAspectRatioCase(options: RunAspectRatioCaseOptions): Pr
       resultSizeBytes: result.sizeBytes,
       profile,
       loudness,
+      ...(frame === undefined ? {} : { frame }),
     };
   } finally {
     await workspace.cleanup();

@@ -2,10 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const FIXTURES_RELATIVE_PATH = path.join("src", "test", "fixtures", "videos");
+const FIXTURES_RELATIVE_PATH = path.join("src", "test", "fixtures");
 
 /**
- * Locates the committed codec samples without depending on the working directory.
+ * Locates the committed fixture root (`src/test/fixtures`) without depending on
+ * the working directory.
  *
  * `npm run` starts in the package root, but a direct `node --test` or an IDE run
  * configuration can start anywhere, so the current directory is only the first
@@ -21,7 +22,7 @@ export function resolveFixturesDir(): string {
 
   if (!found) {
     throw new Error(
-      `Codec sample fixtures were not found at ${FIXTURES_RELATIVE_PATH}. Looked under:\n${searchRoots.join("\n")}`,
+      `Test fixtures were not found at ${FIXTURES_RELATIVE_PATH}. Looked under:\n${searchRoots.join("\n")}`,
     );
   }
 
