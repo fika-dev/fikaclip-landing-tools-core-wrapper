@@ -9,8 +9,6 @@ export const WATERMARK_IMAGE_RGB: Rgb = { r: 255, g: 0, b: 0 };
 export type WatermarkImageFile = {
   fileName: string;
   filePath: string;
-  width: number;
-  height: number;
 };
 
 export type CreateWatermarkImageFileOptions = {
@@ -38,5 +36,5 @@ export async function createWatermarkImageFile(
     { cwd: workDir },
   );
 
-  return { fileName, filePath: path.join(workDir, fileName), width, height };
+  return { fileName, filePath: path.join(workDir, fileName) };
 }

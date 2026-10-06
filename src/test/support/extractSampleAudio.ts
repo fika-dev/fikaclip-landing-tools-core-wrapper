@@ -1,6 +1,7 @@
-import { FfmpegExtractAudioRepository, type AudioCodec, type AudioFormat } from "../../index";
+import { type AudioCodec, type AudioFormat } from "../../index";
 
 import type { CodecSampleVideo } from "./CodecSampleVideo";
+import { createAudioExtractionUseCase } from "./createAudioExtractionUseCase";
 import { runMediaEditCase, type MediaEditCaseOutcome } from "./runMediaEditCase";
 
 export type ExtractSampleAudioOptions = {
@@ -22,7 +23,7 @@ export async function extractSampleAudio(options: ExtractSampleAudioOptions): Pr
 
   return runMediaEditCase({
     sample,
-    createRepository: (config) => new FfmpegExtractAudioRepository(config),
+    createUseCase: createAudioExtractionUseCase,
     buildCommand: ({ source }) => ({
       operation: "extract-audio",
       source,

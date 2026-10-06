@@ -1,9 +1,8 @@
 import fs from "node:fs/promises";
 
-import { FfmpegWatermarkVideoRepository } from "../../index";
-
 import type { CodecSampleVideo } from "./CodecSampleVideo";
 import { createWatermarkImageFile } from "./createWatermarkImageFile";
+import { createWatermarkUseCase } from "./createWatermarkUseCase";
 import { runMediaEditCase, type MediaEditCaseOutcome } from "./runMediaEditCase";
 
 export type WatermarkSampleOptions = {
@@ -28,7 +27,7 @@ export async function watermarkSample(options: WatermarkSampleOptions): Promise<
 
   return runMediaEditCase({
     sample,
-    createRepository: (config) => new FfmpegWatermarkVideoRepository(config),
+    createUseCase: createWatermarkUseCase,
     ...(captureFrame === undefined ? {} : { captureFrame }),
     buildCommand: async ({ workDir, source }) => {
       const image = await createWatermarkImageFile({ workDir });

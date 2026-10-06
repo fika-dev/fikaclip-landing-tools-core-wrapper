@@ -1,10 +1,9 @@
 import fs from "node:fs/promises";
 
-import { FfmpegAddAudioRepository } from "../../index";
-
 import type { BeepAudioCodec } from "./BeepAudioEncoding";
 import type { CodecSampleVideo } from "./CodecSampleVideo";
 import { createBeepAudioFile } from "./createBeepAudioFile";
+import { createAudioAdditionUseCase } from "./createAudioAdditionUseCase";
 import { runMediaEditCase, type MediaEditCaseOutcome } from "./runMediaEditCase";
 
 export type InsertBeepIntoSampleOptions = {
@@ -21,7 +20,7 @@ export async function insertBeepIntoSample(options: InsertBeepIntoSampleOptions)
 
   return runMediaEditCase({
     sample,
-    createRepository: (config) => new FfmpegAddAudioRepository(config),
+    createUseCase: createAudioAdditionUseCase,
     buildCommand: async ({ workDir, source }) => {
       const beep = await createBeepAudioFile({ workDir, codec: beepCodec, seconds: beepSeconds });
       const beepBytes = await fs.readFile(beep.filePath);

@@ -1,6 +1,7 @@
-import { FfmpegAdjustAudioVolumeRepository, type AudioVolumeSegment } from "../../index";
+import { type AudioVolumeSegment } from "../../index";
 
 import type { CodecSampleVideo } from "./CodecSampleVideo";
+import { createAudioVolumeUseCase } from "./createAudioVolumeUseCase";
 import { runMediaEditCase, type MediaEditCaseOutcome } from "./runMediaEditCase";
 
 export type AdjustSampleVolumeOptions = {
@@ -20,7 +21,7 @@ export async function adjustSampleVolume(options: AdjustSampleVolumeOptions): Pr
 
   return runMediaEditCase({
     sample,
-    createRepository: (config) => new FfmpegAdjustAudioVolumeRepository(config),
+    createUseCase: createAudioVolumeUseCase,
     buildCommand: ({ source }) => ({
       operation: "adjust-volume",
       source,

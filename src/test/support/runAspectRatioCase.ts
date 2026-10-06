@@ -1,21 +1,18 @@
 import fs from "node:fs/promises";
 
-import {
-  FfmpegVideoAspectRatioRepository,
-  UseCase,
-  type EditVideoAspectRatioEntity,
-  type MediaSource,
-  type OutputAudioCodec,
-  type OutputVideoCodec,
-  type VideoAspectRatio,
-  type VideoContainerFormat,
+import type {
+  MediaSource,
+  OutputAudioCodec,
+  OutputVideoCodec,
+  VideoAspectRatio,
+  VideoContainerFormat,
 } from "../../index";
 
 import type { CodecSampleVideo } from "./CodecSampleVideo";
 import { createTestWorkspace } from "./createTestWorkspace";
+import { createVideoAspectRatioUseCase } from "./createVideoAspectRatioUseCase";
 import type { AudioLoudness } from "./detectAudioLoudness";
 import { measureOutputBlob } from "./measureOutputBlob";
-import { NodeFfmpegMediaEditRuntime } from "./NodeFfmpegMediaEditRuntime";
 import type { MediaProfile } from "./probeMediaProfile";
 
 export type RunAspectRatioCaseOptions = {
@@ -39,57 +36,47 @@ export type AspectRatioCaseOutcome = {
   resultSizeBytes: number;
   profile: MediaProfile;
   loudness: AudioLoudness;
-  warnings: string[];
-  ffmpegArgs: string[];
 };
 
-/** Runs one aspect-ratio transform against a committed sample and measures it. */
+/**
+ * Transforms one sample through the app's aspect-ratio use case, then measures
+ * the result.
+ *
+ * As with the other runners, the transform is the library's own assembly and
+ * only the measurement is the test's.
+ */
 export async function runAspectRatioCase(options: RunAspectRatioCaseOptions): Promise<AspectRatioCaseOutcome> {
   const { sample, aspectRatio, output } = options;
   const workspace = await createTestWorkspace(`aspect-ratio-${sample.container}`);
 
   try {
-    const runtime = new NodeFfmpegMediaEditRuntime(workspace.dir);
-    const useCase = new UseCase<EditVideoAspectRatioEntity>([
-      new FfmpegVideoAspectRatioRepository({
-        coreURL: "https://example.invalid/ffmpeg-core.js",
-        wasmURL: "https://example.invalid/ffmpeg-core.wasm",
-        runtime,
-      }),
-    ]);
+    const useCase = createVideoAspectRatioUseCase(workspace.dir);
     const videoBytes = await fs.readFile(sample.filePath);
     const source: MediaSource = { type: "blob", blob: new Blob([new Uint8Array(videoBytes)]) };
 
-    const entity = await useCase
-      .execute({
-        command: { source, fileName: sample.fileName, aspectRatio, output },
-        jobId: `aspect-ratio-${aspectRatio}-test`,
-      })
+    const result = await useCase
+      .transform({ source, fileName: sample.fileName, aspectRatio, output })
       .catch((error: unknown) => {
         throw new Error(
           [
             error instanceof Error ? error.message : String(error),
             `--- sample ---\n${sample.fileName} (${sample.videoCodec}/${sample.audioCodec})`,
             `--- requested ---\n${aspectRatio} → ${output.format}/${output.videoCodec}/${output.audioCodec}`,
-            `--- ffmpeg argv ---\nffmpeg ${runtime.lastArgs.join(" ")}`,
-            `--- ffmpeg stderr ---\n${runtime.lastStderr.trim()}`,
+            `--- ffmpeg argv ---\nffmpeg ${useCase.runtime.lastArgs.join(" ")}`,
+            `--- ffmpeg stderr ---\n${useCase.runtime.lastStderr.trim()}`,
           ].join("\n"),
           { cause: error },
         );
       });
 
-    if (!entity.result) throw new Error("Aspect ratio use case did not produce a result.");
-
-    const { profile, loudness } = await measureOutputBlob(workspace.dir, entity.result);
+    const { profile, loudness } = await measureOutputBlob(workspace.dir, result);
 
     return {
-      resultFileName: entity.result.fileName,
-      resultMimeType: entity.result.mimeType,
-      resultSizeBytes: entity.result.sizeBytes,
+      resultFileName: result.fileName,
+      resultMimeType: result.mimeType,
+      resultSizeBytes: result.sizeBytes,
       profile,
       loudness,
-      warnings: entity.result.details.warnings,
-      ffmpegArgs: runtime.lastArgs,
     };
   } finally {
     await workspace.cleanup();

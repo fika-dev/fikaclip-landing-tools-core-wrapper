@@ -1,6 +1,7 @@
-import { FfmpegMuteAudioRepository, type MuteSegment } from "../../index";
+import { type MuteSegment } from "../../index";
 
 import type { CodecSampleVideo } from "./CodecSampleVideo";
+import { createAudioMuteUseCase } from "./createAudioMuteUseCase";
 import { runMediaEditCase, type MediaEditCaseOutcome } from "./runMediaEditCase";
 
 export type MuteSampleOptions = {
@@ -20,7 +21,7 @@ export async function muteSample(options: MuteSampleOptions): Promise<MediaEditC
 
   return runMediaEditCase({
     sample,
-    createRepository: (config) => new FfmpegMuteAudioRepository(config),
+    createUseCase: createAudioMuteUseCase,
     buildCommand: ({ source }) => ({
       operation: "mute",
       source,

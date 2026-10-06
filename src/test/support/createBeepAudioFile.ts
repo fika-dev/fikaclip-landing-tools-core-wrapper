@@ -4,7 +4,6 @@ import { BEEP_AUDIO_ENCODINGS, type BeepAudioCodec } from "./BeepAudioEncoding";
 import { runFfmpegOrThrow } from "./runFfmpegOrThrow";
 
 export type BeepAudioFile = {
-  codec: BeepAudioCodec;
   fileName: string;
   filePath: string;
 };
@@ -51,5 +50,5 @@ export async function createBeepAudioFile(options: CreateBeepAudioFileOptions): 
     fileName,
   ], { cwd: workDir });
 
-  return { codec, fileName, filePath: path.join(workDir, fileName) };
+  return { fileName, filePath: path.join(workDir, fileName) };
 }

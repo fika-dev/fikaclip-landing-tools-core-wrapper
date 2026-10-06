@@ -1,24 +1,19 @@
 import fs from "node:fs/promises";
 
-import {
-  CodecCompatibilityRepository,
-  CreateVideoFormatConversionPlanRepository,
-  FfmpegMediaProbeRepository,
-  FfmpegVideoFormatTranscodeRepository,
-  TranscodeVideoFormatRepository,
-  UseCase,
-  type ConvertVideoFormatEntity,
-  type ConvertVideoFormatOutput,
-  type ConvertVideoFormatDetails,
-  type MediaSource,
-  type VideoFormatConversionMode,
+import type {
+  ConvertVideoFormatDetails,
+  ConvertVideoFormatOutput,
+  MediaSource,
+  VideoFormatConversionMode,
 } from "../../index";
 
 import type { CodecSampleVideo } from "./CodecSampleVideo";
 import { createTestWorkspace } from "./createTestWorkspace";
+import { createVideoFormatConversionUseCase } from "./createVideoFormatConversionUseCase";
+import type { DecodeReport } from "./decodeMediaStreams";
 import type { AudioLoudness } from "./detectAudioLoudness";
+import type { FramePixels } from "./FramePixels";
 import { measureOutputBlob } from "./measureOutputBlob";
-import { NodeFfmpegMediaEditRuntime } from "./NodeFfmpegMediaEditRuntime";
 import type { MediaProfile } from "./probeMediaProfile";
 
 export type RunFormatConversionCaseOptions = {
@@ -33,22 +28,23 @@ export type FormatConversionCaseOutcome = {
   resultSizeBytes: number;
   profile: MediaProfile;
   loudness: AudioLoudness;
+  /** First frame of the converted video, for comparing the picture to the source. */
+  frame?: FramePixels;
+  /** Full-decode report, so a container rewrite cannot hide broken packets. */
+  decode?: DecodeReport;
   /** The plan the conversion actually ran with: mode, resolved codecs, warnings. */
   plan: ConvertVideoFormatDetails;
-  ffmpegArgs: string[];
 };
 
 /**
- * Runs one format conversion through the full app assembly: plan first, then
- * transcode.
+ * Converts one sample through the app's conversion use case, then measures the
+ * result.
  *
- * The plan step probes the input, and probing needs a browser — the probe
- * repository rejects a non-browser environment outright. The plan repository
- * swallows that failure by design and continues without input metadata, so
- * conversion still runs here; what it cannot exercise is the "codec already
- * matches, copy instead of re-encode" optimisation, which depends on that
- * metadata. That path is covered by the plan's own logic tests, with metadata
- * supplied directly and no media involved.
+ * The conversion is entirely the library's: `createVideoFormatConversionUseCase`
+ * assembles the same plan-then-transcode pipeline the app ships, from the same
+ * package entry. Only the measurement afterwards belongs to the test, and it
+ * deliberately uses ffprobe and a full decode rather than the library, so the
+ * check stays independent of the code being checked.
  */
 export async function runFormatConversionCase(
   options: RunFormatConversionCaseOptions,
@@ -57,52 +53,39 @@ export async function runFormatConversionCase(
   const workspace = await createTestWorkspace(`format-conversion-${sample.container}`);
 
   try {
-    const runtime = new NodeFfmpegMediaEditRuntime(workspace.dir);
-    const runtimeConfig = {
-      coreURL: "https://example.invalid/ffmpeg-core.js",
-      wasmURL: "https://example.invalid/ffmpeg-core.wasm",
-      runtime,
-    };
-    const useCase = new UseCase<ConvertVideoFormatEntity>([
-      new CreateVideoFormatConversionPlanRepository(
-        new FfmpegMediaProbeRepository(runtimeConfig),
-        new CodecCompatibilityRepository(),
-      ),
-      new TranscodeVideoFormatRepository(new FfmpegVideoFormatTranscodeRepository(runtimeConfig)),
-    ]);
+    const useCase = createVideoFormatConversionUseCase(workspace.dir);
     const videoBytes = await fs.readFile(sample.filePath);
     const source: MediaSource = { type: "blob", blob: new Blob([new Uint8Array(videoBytes)]) };
 
-    const entity = await useCase
-      .execute({
-        command: { source, fileName: sample.fileName, output, ...(mode === undefined ? {} : { mode }) },
-        jobId: "format-conversion-test",
-      })
+    const result = await useCase
+      .convert({ source, fileName: sample.fileName, output, ...(mode === undefined ? {} : { mode }) })
       .catch((error: unknown) => {
         throw new Error(
           [
             error instanceof Error ? error.message : String(error),
             `--- sample ---\n${sample.fileName} (${sample.videoCodec}/${sample.audioCodec})`,
             `--- requested ---\n${JSON.stringify({ ...output, mode })}`,
-            `--- ffmpeg argv ---\nffmpeg ${runtime.lastArgs.join(" ")}`,
-            `--- ffmpeg stderr ---\n${runtime.lastStderr.trim()}`,
+            `--- ffmpeg argv ---\nffmpeg ${useCase.runtime.lastArgs.join(" ")}`,
+            `--- ffmpeg stderr ---\n${useCase.runtime.lastStderr.trim()}`,
           ].join("\n"),
           { cause: error },
         );
       });
 
-    if (!entity.result) throw new Error("Format conversion use case did not produce a result.");
-
-    const { profile, loudness } = await measureOutputBlob(workspace.dir, entity.result);
+    const { profile, loudness, frame, decode } = await measureOutputBlob(workspace.dir, result, {
+      captureFrame: true,
+      decodeCheck: true,
+    });
 
     return {
-      resultFileName: entity.result.fileName,
-      resultMimeType: entity.result.mimeType,
-      resultSizeBytes: entity.result.sizeBytes,
+      resultFileName: result.fileName,
+      resultMimeType: result.mimeType,
+      resultSizeBytes: result.sizeBytes,
       profile,
       loudness,
-      plan: entity.result.details,
-      ffmpegArgs: runtime.lastArgs,
+      ...(frame === undefined ? {} : { frame }),
+      ...(decode === undefined ? {} : { decode }),
+      plan: result.details,
     };
   } finally {
     await workspace.cleanup();

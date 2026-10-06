@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import type { MediaEditCommand, MediaSource } from "../../index";
 
 import type { CodecSampleVideo } from "./CodecSampleVideo";
-import { createMediaEditUseCase, type MediaEditRepositoryFactory } from "./createMediaEditUseCase";
+import type { TestMediaEditUseCase } from "./createMediaEditingUseCase";
 import { createTestWorkspace } from "./createTestWorkspace";
 import type { AudioLoudness } from "./detectAudioLoudness";
 import type { FramePixels } from "./FramePixels";
@@ -20,7 +20,12 @@ export type MediaEditCaseContext = {
 
 export type RunMediaEditCaseOptions = {
   sample: CodecSampleVideo;
-  createRepository: MediaEditRepositoryFactory;
+  /**
+   * The operation's use-case factory — the same assembly the app ships, so the
+   * work under test runs through the library's public surface rather than
+   * through anything the tests invented.
+   */
+  createUseCase: (workDir: string) => TestMediaEditUseCase;
   /**
    * Builds the command once the workspace exists. Operations that need extra
    * media — an audio track, a watermark image — create it here, because those
@@ -39,8 +44,6 @@ export type MediaEditCaseOutcome = {
   loudness: AudioLoudness;
   /** Present only when `captureFrame` was requested. */
   frame?: FramePixels;
-  /** The argv the repository produced, for assertions and failure reports. */
-  ffmpegArgs: string[];
 };
 
 /**
@@ -49,14 +52,14 @@ export type MediaEditCaseOutcome = {
  * declare its command and its expectations.
  */
 export async function runMediaEditCase(options: RunMediaEditCaseOptions): Promise<MediaEditCaseOutcome> {
-  const { sample, createRepository, buildCommand, captureFrame } = options;
+  const { sample, createUseCase, buildCommand, captureFrame } = options;
   const workspace = await createTestWorkspace(`media-edit-${sample.container}`);
 
   try {
     const videoBytes = await fs.readFile(sample.filePath);
     const source: MediaSource = { type: "blob", blob: new Blob([new Uint8Array(videoBytes)]) };
     const command = await buildCommand({ workDir: workspace.dir, sample, source });
-    const useCase = createMediaEditUseCase(workspace.dir, createRepository);
+    const useCase = createUseCase(workspace.dir);
 
     const result = await useCase.execute(command).catch((error: unknown) => {
       throw describeFailure(error, sample, command, useCase.runtime);
@@ -70,7 +73,6 @@ export async function runMediaEditCase(options: RunMediaEditCaseOptions): Promis
       profile,
       loudness,
       ...(frame === undefined ? {} : { frame }),
-      ffmpegArgs: useCase.runtime.lastArgs,
     };
   } finally {
     await workspace.cleanup();

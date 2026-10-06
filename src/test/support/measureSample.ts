@@ -1,4 +1,5 @@
 import { createTestWorkspace } from "./createTestWorkspace";
+import { decodeMediaStreams, type DecodeReport } from "./decodeMediaStreams";
 import { detectAudioLoudness, type AudioLoudness } from "./detectAudioLoudness";
 import { readFramePixels, type FramePixels } from "./FramePixels";
 import { probeMediaProfile, type MediaProfile } from "./probeMediaProfile";
@@ -8,6 +9,7 @@ export type SampleMeasurement = {
   profile: MediaProfile;
   loudness: AudioLoudness;
   frame: FramePixels;
+  decode: DecodeReport;
 };
 
 /**
@@ -22,9 +24,10 @@ export async function measureSample(sample: CodecSampleVideo): Promise<SampleMea
   const workspace = await createTestWorkspace(`measure-${sample.container}`);
 
   try {
-    const [profile, loudness] = await Promise.all([
+    const [profile, loudness, decode] = await Promise.all([
       probeMediaProfile(sample.filePath),
       detectAudioLoudness(sample.filePath),
+      decodeMediaStreams(sample.filePath),
     ]);
     const frame = await readFramePixels({
       filePath: sample.filePath,
@@ -33,7 +36,7 @@ export async function measureSample(sample: CodecSampleVideo): Promise<SampleMea
       height: sample.height,
     });
 
-    return { profile, loudness, frame };
+    return { profile, loudness, frame, decode };
   } finally {
     await workspace.cleanup();
   }

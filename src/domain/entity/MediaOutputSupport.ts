@@ -21,9 +21,13 @@ export type OutputAudioCodec = (typeof OUTPUT_AUDIO_CODECS)[number];
 /**
  * Video codecs each container may carry on output.
  *
- * MP4 and MOV are registration-based: a codec needs a defined sample entry, and
- * VP8/VP9 have no standard one. WebM is a constrained Matroska profile that
- * admits VP8 and VP9 only. Matroska itself is codec-agnostic and takes any.
+ * WebM is a constrained Matroska profile that admits VP8 and VP9 only, and
+ * Matroska itself is codec-agnostic and takes any.
+ *
+ * MP4 and MOV are narrowed by choice rather than by capability. FFmpeg can write
+ * VP9 into MP4 — there is a standard sample entry for it — but Safari will not
+ * play it, so an MP4 export meant to be universally playable must not offer it.
+ * VP8 genuinely has no MP4 mapping and fails outright.
  */
 const OUTPUT_VIDEO_CODECS_BY_FORMAT: Record<VideoContainerFormat, readonly OutputVideoCodec[]> = {
   mp4: ["h264", "h265"],
@@ -80,6 +84,14 @@ export function isOutputVideoCodec(codec: VideoCodec | undefined): codec is Outp
 
 export function isOutputAudioCodec(codec: AudioCodec | undefined): codec is OutputAudioCodec {
   return OUTPUT_AUDIO_CODECS.includes(codec as OutputAudioCodec);
+}
+
+export function listOutputVideoCodecs(format: VideoContainerFormat): readonly OutputVideoCodec[] {
+  return OUTPUT_VIDEO_CODECS_BY_FORMAT[format];
+}
+
+export function listOutputAudioCodecs(format: VideoContainerFormat): readonly OutputAudioCodec[] {
+  return OUTPUT_AUDIO_CODECS_BY_FORMAT[format];
 }
 
 export function isSupportedOutputCombination(combination: {

@@ -10,6 +10,7 @@ import type {
   VideoFormatConversionMode,
 } from "../entity";
 import { normalizeAudioCodec, normalizeVideoCodec } from "./MediaFormatNormalization";
+import { assertSupportedOutputRequest } from "./MediaOutputValidation";
 import type { Repository } from "./Repository";
 
 const DEFAULT_TARGET_CODECS: Record<VideoContainerFormat, { videoCodec: VideoCodec; audioCodec: AudioCodec }> = {
@@ -24,6 +25,11 @@ export class CodecCompatibilityRepository implements Repository<ConvertVideoForm
 
   execute(entity: ConvertVideoFormatEntity): ConvertVideoFormatEntity {
     const { command, inputMetadata } = entity;
+
+    // Fail here rather than inside FFmpeg: an unsupported pairing is a request
+    // error, not a transcode failure.
+    assertSupportedOutputRequest(command.output);
+
     const requestedMode = this.resolveConversionMode(command.mode, command.output);
     const requestedOutput = this.resolveOutput(command.output, requestedMode);
     const { mode, output, warnings } = this.optimizePlanForInput(

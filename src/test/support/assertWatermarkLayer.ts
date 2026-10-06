@@ -1,5 +1,3 @@
-import assert from "node:assert/strict";
-
 import { assertPixelColor, assertPixelNotColor } from "./assertPixelColor";
 import { WATERMARK_IMAGE_RGB } from "./createWatermarkImageFile";
 import type { FramePixels } from "./FramePixels";
@@ -62,44 +60,4 @@ export function assertWatermarkLayer(options: AssertWatermarkLayerOptions): void
   for (const [x, y] of alsoClearAt) {
     assertPixelColor(frame.at(x, y), sourceFrame.at(x, y), `pixel (${x}, ${y}) must be untouched`);
   }
-}
-
-/** Points sampled well away from any layer, used as the "nothing else moved" check. */
-export const UNTOUCHED_POINTS: readonly [number, number][] = [
-  [200, 200],
-  [400, 300],
-  [600, 40],
-  [320, 180],
-];
-
-export function assertFrameMatchesSource(
-  frame: FramePixels,
-  sourceFrame: FramePixels,
-  points: readonly [number, number][] = UNTOUCHED_POINTS,
-): void {
-  for (const [x, y] of points) {
-    assertPixelColor(frame.at(x, y), sourceFrame.at(x, y), `pixel (${x}, ${y}) outside the watermark`);
-  }
-}
-
-/**
- * Asserts an operation left the audio stream alone.
- *
- * Only meaningful for operations using `-c:a copy`: the stream is carried over
- * rather than re-encoded, so its measured loudness must match the source
- * exactly rather than approximately.
- */
-export function assertAudioUnchanged(
-  outcome: { profile: { audioCodec?: string }; loudness: { meanVolumeDb: number | null } },
-  source: { profile: { audioCodec?: string }; loudness: { meanVolumeDb: number | null } },
-): void {
-  assert.equal(outcome.profile.audioCodec, source.profile.audioCodec, "audio codec is copied, not re-encoded");
-  assert.ok(
-    source.loudness.meanVolumeDb !== null && outcome.loudness.meanVolumeDb !== null,
-    "both sides must have a measurable audio stream",
-  );
-  assert.ok(
-    Math.abs(outcome.loudness.meanVolumeDb - source.loudness.meanVolumeDb) <= 0.2,
-    `audio loudness changed: source ${source.loudness.meanVolumeDb} dB, output ${outcome.loudness.meanVolumeDb} dB`,
-  );
 }

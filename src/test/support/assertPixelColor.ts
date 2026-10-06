@@ -10,11 +10,11 @@ import type { Rgb } from "./FramePixels";
  */
 const DEFAULT_TOLERANCE = 12;
 
-export function describeRgb(color: Rgb): string {
+function describeRgb(color: Rgb): string {
   return `rgb(${color.r}, ${color.g}, ${color.b})`;
 }
 
-export function isApproximatelyRgb(actual: Rgb, expected: Rgb, tolerance = DEFAULT_TOLERANCE): boolean {
+function isApproximatelyRgb(actual: Rgb, expected: Rgb, tolerance = DEFAULT_TOLERANCE): boolean {
   return (
     Math.abs(actual.r - expected.r) <= tolerance &&
     Math.abs(actual.g - expected.g) <= tolerance &&

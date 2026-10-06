@@ -1,5 +1,4 @@
 import {
-  FfmpegCropVideoRepository,
   type AudioCodec,
   type CropRegion,
   type VideoCodec,
@@ -7,6 +6,7 @@ import {
 } from "../../index";
 
 import type { CodecSampleVideo } from "./CodecSampleVideo";
+import { createVideoCropUseCase } from "./createVideoCropUseCase";
 import { runMediaEditCase, type MediaEditCaseOutcome } from "./runMediaEditCase";
 
 export type CropSampleOptions = {
@@ -25,7 +25,7 @@ export async function cropSample(options: CropSampleOptions): Promise<MediaEditC
 
   return runMediaEditCase({
     sample,
-    createRepository: (config) => new FfmpegCropVideoRepository(config),
+    createUseCase: createVideoCropUseCase,
     buildCommand: ({ source }) => ({
       operation: "crop",
       source,
