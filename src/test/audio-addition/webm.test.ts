@@ -3,13 +3,11 @@ import path from "node:path";
 import { describe, it } from "node:test";
 
 import {
-  assertSampleMatchesManifest,
   createBeepAudioFile,
   createTestWorkspace,
   detectAudioLoudness,
   insertBeepIntoSample,
-  loadCodecSampleVideos,
-  pickSample,
+  loadCodecSampleMatrix,
   probeMediaProfile,
   runFfmpegOrThrow,
   toProbeVideoCodecName,
@@ -17,8 +15,8 @@ import {
   type CodecSampleVideo,
 } from "../support";
 
-const SAMPLES = loadCodecSampleVideos("webm");
-const PINNED_SAMPLE = pickSample(SAMPLES, { videoCodec: "vp9", audioCodec: "opus" });
+const MATRIX = loadCodecSampleMatrix("webm");
+const PINNED_SAMPLE = MATRIX.get("vp9", "opus");
 
 /**
  * Audio codecs WebM can legally carry — and that is the whole list.
@@ -32,14 +30,6 @@ const PINNED_SAMPLE = pickSample(SAMPLES, { videoCodec: "vp9", audioCodec: "opus
 const CONTAINER_LEGAL_AUDIO_CODECS: BeepAudioCodec[] = ["opus", "vorbis"];
 
 describe("webm 컨테이너에 오디오 추가", () => {
-  describe("픽스처가 매니페스트와 일치하는지", () => {
-    for (const sample of SAMPLES) {
-      it(`${sample.fileName} 은 ${sample.videoCodec}/${sample.audioCodec} 이다`, async () => {
-        await assertSampleMatchesManifest(sample);
-      });
-    }
-  });
-
   /**
    * These cases document a real defect, not a container limitation.
    *
@@ -68,7 +58,7 @@ describe("webm 컨테이너에 오디오 추가", () => {
       });
     }
 
-    for (const sample of SAMPLES) {
+    for (const sample of MATRIX.all) {
       it(`${sample.videoCodec}/${sample.audioCodec} 소스도 동일하게 실패한다`, async () => {
         // Sweeping the source codecs shows the failure is container-driven: VP8,
         // VP9 and AV1 are all in-profile video, so none of them is the problem.

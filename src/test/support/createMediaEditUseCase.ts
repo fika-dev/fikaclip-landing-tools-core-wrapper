@@ -1,34 +1,37 @@
 import {
-  FfmpegAddAudioRepository,
   UseCase,
+  type FfmpegMediaEditRepositoryConfig,
   type MediaEditCommand,
   type MediaEditEntity,
+  type MediaEditRepository,
   type MediaEditResult,
 } from "../../index";
 
 import { NodeFfmpegMediaEditRuntime } from "./NodeFfmpegMediaEditRuntime";
 
-export type AudioAdditionCommand = Extract<MediaEditCommand, { operation: "add-audio" }>;
+export type MediaEditRepositoryFactory = (config: FfmpegMediaEditRepositoryConfig) => MediaEditRepository;
 
-export type AudioAdditionUseCase = {
-  execute(command: AudioAdditionCommand): Promise<MediaEditResult>;
+export type MediaEditUseCase = {
+  execute(command: MediaEditCommand): Promise<MediaEditResult>;
   /** Exposed so a failing test can report the real ffmpeg argv and stderr. */
   readonly runtime: NodeFfmpegMediaEditRuntime;
 };
 
 /**
- * Assembles the add-audio use case for tests, in the same shape the app uses:
- * a `UseCase<MediaEditEntity>` holding the real `FfmpegAddAudioRepository`, with
- * `entity.result` unwrapped for ergonomics.
+ * Assembles any media-edit operation the way the app does: a
+ * `UseCase<MediaEditEntity>` holding one repository, with `entity.result`
+ * unwrapped for ergonomics.
  *
- * The only departure from the app assembly is the runtime — a Node-backed stand
- * in instead of ffmpeg.wasm. Everything the repository decides (filters, codec
- * flags, stream mapping, output naming) runs unmodified.
+ * All six media-edit repositories are thin subclasses of the same base, so one
+ * factory covers crop, extract-audio, adjust-volume, mute, add-audio and
+ * watermark. The only departure from the app assembly is the runtime — a
+ * Node-backed stand-in instead of ffmpeg.wasm — so every argument the
+ * repository builds runs unmodified.
  */
-export function createAudioAdditionUseCase(workDir: string): AudioAdditionUseCase {
+export function createMediaEditUseCase(workDir: string, createRepository: MediaEditRepositoryFactory): MediaEditUseCase {
   const runtime = new NodeFfmpegMediaEditRuntime(workDir);
   const useCase = new UseCase<MediaEditEntity>([
-    new FfmpegAddAudioRepository({
+    createRepository({
       // Unreachable on purpose: the config type demands a runtime location, but
       // the injected runtime means `FfmpegRuntime` is never constructed. A real
       // URL here would hide an accidental fall-through to ffmpeg.wasm.

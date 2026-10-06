@@ -1,13 +1,17 @@
 import type { FileData, ProgressEventCallback } from "@ffmpeg/ffmpeg";
 
-import type {
-  AudioCodec,
-  AudioFormat,
-  MediaEditEntity,
-  MediaEditRepository,
-  MediaSource,
-  VideoCodec,
-  VideoContainerFormat,
+import {
+  assertOutputAudioCodec,
+  assertOutputVideoCodec,
+  type AudioCodec,
+  type AudioFormat,
+  type MediaEditEntity,
+  type MediaEditRepository,
+  type MediaSource,
+  type OutputAudioCodec,
+  type OutputVideoCodec,
+  type VideoCodec,
+  type VideoContainerFormat,
 } from "../../domain";
 import { FfmpegRuntime, readFfmpegBytes, type FfmpegRuntimeConfig } from "../ffmpeg/FfmpegRuntime";
 
@@ -285,12 +289,27 @@ function defaultAudioCodec(format: AudioFormat): Exclude<AudioCodec, "none" | "c
   return format === "mp3" ? "mp3" : format === "ogg" ? "opus" : "aac";
 }
 
+const FFMPEG_VIDEO_ENCODERS: Record<OutputVideoCodec | "copy", string> = {
+  h264: "libx264",
+  h265: "libx265",
+  vp8: "libvpx",
+  vp9: "libvpx-vp9",
+  copy: "copy",
+};
+
+const FFMPEG_AUDIO_ENCODERS: Record<OutputAudioCodec | "copy", string> = {
+  aac: "aac",
+  opus: "libopus",
+  mp3: "libmp3lame",
+  copy: "copy",
+};
+
 function toVideoCodec(codec: VideoCodec) {
-  return { h264: "libx264", h265: "libx265", vp8: "libvpx", vp9: "libvpx-vp9", av1: "libaom-av1", copy: "copy" }[codec];
+  return FFMPEG_VIDEO_ENCODERS[assertOutputVideoCodec(codec)];
 }
 
 function toAudioCodec(codec: Exclude<AudioCodec, "none">) {
-  return { aac: "aac", opus: "libopus", mp3: "libmp3lame", copy: "copy" }[codec];
+  return FFMPEG_AUDIO_ENCODERS[assertOutputAudioCodec(codec)];
 }
 
 function even(value: number) {

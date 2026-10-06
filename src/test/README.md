@@ -1,62 +1,204 @@
-# Codec matrix tests
+# 코덱 매트릭스 테스트
 
-Container- and codec-level tests for the media editing repositories, run against
-real media with the system `ffmpeg` binary.
-
-```
-npm run test:audio-addition   # build + run
-npm run typecheck:test        # type-check tests (the build config excludes src/test)
-```
-
-## Layout
+모든 미디어 연산을 컨테이너 · 코덱 단위로 검증합니다. 실제 영상 파일과 시스템에
+설치된 `ffmpeg`으로 돌아갑니다.
 
 ```
-fixtures/videos/    33 committed 1-second samples + manifest.csv
-support/            runtime adapter, fixture loading, probing, assertions
-audio-addition/     one test file per container: mp4 / mov / webm / mkv
+npm run test:media                       # 전체 (489개, 약 80초)
+npm run test:media:watermark             # 연산 하나 (10~15초)
+npm run test:media:output-support        # 미디어가 필요 없는 테스트 (1초)
+npm run typecheck:test                   # 테스트 타입체크 (빌드 설정은 src/test 를 제외함)
 ```
 
-## Why it is built this way
+연산별 스크립트가 디렉터리마다 하나씩 있습니다. `npm run`을 인자 없이 실행하면
+목록이 나옵니다.
 
-**The repository's ffmpeg arguments are what is under test.** `NodeFfmpegMediaEditRuntime`
-replaces ffmpeg.wasm with a temp directory and the system `ffmpeg`, then passes the
-argument list through untouched. Tests never rebuild the invocation themselves — the
-older `scripts/synthetic` suite does, which is why it cannot catch a wrong codec flag.
+## 구성
 
-**Source media is committed; inserted audio is generated.** Encoding the samples at
-test time would make the input depend on which encoders the local ffmpeg happens to
-have (`libaom-av1` and `libvorbis` are missing on some builds), so the fixtures are
-fixed bytes. The inserted beep is a pure sine, so `lavfi` can synthesise it anywhere.
+```
+fixtures/videos/              1초 샘플 33개 + manifest.csv
+fixtures/manifest.test.ts     샘플이 매니페스트와 일치하는지 확인
+support/                      런타임 어댑터, 케이스 실행기, 측정, 단정 헬퍼
+output-support/               출력 가능 조합 선언 (미디어 불필요)
+audio-addition/               컨테이너별 파일 하나씩: mp4 / mov / webm / mkv
+audio-volume/
+audio-mute/
+audio-extraction/
+video-crop/
+watermark/
+video-aspect-ratio/
+video-format-conversion/      출력 대상 컨테이너별로 파일 하나씩
+```
 
-**Loudness is measured, not assumed.** Codec names alone would also pass for an empty
-audio stream, so `detectAudioLoudness` confirms audible samples actually arrived.
+## 이렇게 만든 이유
 
-## Container rules the matrix encodes
+**검증 대상은 라이브러리가 만든 ffmpeg 인자입니다.**
+`NodeFfmpegMediaEditRuntime`이 ffmpeg.wasm 자리에 임시 디렉터리와 시스템 `ffmpeg`을
+끼워 넣고, 인자 목록은 손대지 않고 그대로 넘깁니다. 테스트가 ffmpeg 명령을 다시
+적으면 안 됩니다 — 기존 `scripts/synthetic`이 그렇게 하고 있어서 코덱 플래그가
+틀려도 잡아내지 못합니다.
 
-| Container | Audio codecs it can carry | Why |
-| --- | --- | --- |
-| MP4 | AAC, MP3, Opus | Registration-based: a codec needs a defined sample entry |
-| MOV | AAC, PCM, MP3, … | QuickTime grew as an editing format, so PCM is included |
-| MKV | effectively any | Codec-agnostic: a track stores a codec ID plus private data |
-| WebM | Opus, Vorbis only | A deliberately constrained Matroska profile for browsers |
+**테스트는 선언된 유효 조합에서 출발합니다.**
+`listSupportedOutputCombinations()`가 라이브러리가 쓸 수 있는 조합의 기준입니다.
+가능한 조합을 전수로 시도하는 대신, 제공하기로 한 조합만 정확히 훑습니다.
 
-Other things the tests depend on:
+**영상 파일은 커밋하고, 나머지는 실행 중에 만듭니다.**
+샘플을 그때그때 인코딩하면 로컬 ffmpeg에 어떤 인코더가 들어 있는지에 따라 입력이
+달라집니다. 그래서 샘플은 고정된 바이트로 커밋했습니다. 삽입할 비프음과 워터마크
+이미지는 `lavfi`로 만들어서 입력 파일이 필요 없습니다.
 
-- ffprobe reports `matroska,webm` for both `.mkv` and `.webm`; only the extension separates them.
-- Muxing is chosen by file extension, demuxing by file content — so the repository renaming an injected track to `<name>.<index>.input` is harmless.
-- `h265` is `hevc` to ffprobe, and `pcm` is really `pcm_s16le`.
-- `lavfi`'s `sine` is mono, and ffmpeg's native `vorbis` encoder accepts stereo only.
+**픽스처는 목록이 아니라 두 개의 축입니다.**
+`loadCodecSampleMatrix(container)`가 `videoCodecs`와 `audioCodecs`를 따로 내주고,
+`get()` · `withVideo()` · `withAudio()`로 꺼냅니다. 컨테이너 하나가 한 종류가
+아니기 때문입니다 — 같은 `.mp4`에 여러 코덱 짝이 들어갑니다. 네 컨테이너 모두
+두 축의 완전한 교차곱이고, 로더가 그걸 검사합니다. 한 축만 바꾸는 테스트는 그
+사실이 코드에 드러납니다.
 
-## Findings recorded by these tests
+**스트림 정보로 안 보이는 효과는 픽셀로 확인합니다.**
+워터마크의 위치 · 크기 · 투명도는 컨테이너 · 코덱 · 해상도 · 길이를 전혀 바꾸지
+않습니다. `readFramePixels`로 프레임을 직접 읽어야 구별이 됩니다. 샘플 영상이 단색
+한 장이라 워터마크가 덮은 범위가 픽셀 단위로 또렷하게 드러납니다.
 
-Two defects in the `add-audio` branch of `FfmpegMediaEditRepository` are currently
-asserted as *present*. When either is fixed, the matching tests fail — that failure is
-the signal to turn them into success assertions.
+**소리는 짐작하지 않고 측정합니다.**
+코덱 이름만 보면 빈 오디오 스트림도 통과합니다. `detectAudioLoudness`로 실제 소리가
+들어왔는지 확인합니다. 손실 압축은 완전한 무음을 쓰지 않습니다 — AAC의 바닥값이
+약 -91 dB이고 샘플 중 가장 조용한 소리가 약 -39 dB라서, 무음 기준은 -inf가 아니라
+-60 dB 아래로 잡았습니다.
 
-1. **WebM output always fails.** The branch hardcodes `-c:a aac` without looking at the
-   container, so the WebM muxer rejects the header. `webm.test.ts` keeps a control case
-   proving the same source, beep and filter graph succeed with `-c:a libopus`.
-2. **The source audio is replaced, not mixed.** `buildMixFilter` feeds `amix` from the
-   injected tracks only, and the branch maps `0:v?` plus `[mixed]`, so the original
-   audio track is dropped. Each container file proves this by inserting a `volume: 0`
-   beep and measuring silence.
+## 케이스 작성 방법
+
+`watermark/*.test.ts`가 기준 형태입니다. mp4 · mov · mkv 세 파일은 컨테이너 이름,
+MIME 타입, 설명 주석만 다르고 나머지는 같습니다. 같은 연산인데 파일마다 모양이
+다르면 맞춰야 할 신호로 봅니다.
+
+```ts
+describe("<컨테이너> 컨테이너 <연산>", () => {
+  // 두 축이 서로 영향을 주지 않으면 하나씩 고정하고 훑는다
+  describe("오디오 코덱 축 — ...", () => { for (const s of MATRIX.withVideo("h264")) ... });
+  describe("비디오 코덱 축 — ...", () => { for (const s of MATRIX.withAudio("aac")) ... });
+
+  describe("<옵션>별 — 실제 픽셀로 검증", () => {
+    let source: SampleMeasurement;
+    before(async () => { source = await measureSample(PINNED_SAMPLE); });
+
+    // 옵션 하나당 테스트 하나. 각각 다른 테스트로는 확인할 수 없는 것을 본다
+    describe("현재 동작 기록: ...", () => { /* 버그는 원인을 주석에 남기고 기록 */ });
+  });
+});
+```
+
+아래 규칙은 실수가 잦은 순서로 적었습니다.
+
+**1. 다른 테스트가 통과시킬 수 없는 것을 확인하세요.**
+옵션을 바꿨는데 확인하는 값이 그대로면, 그 테스트는 "에러 없이 끝났다"만 보고 있는
+겁니다. 워터마크의 위치 · 크기 · 투명도를 바꿔도 컨테이너 · 코덱 · 해상도 · 길이는
+전부 같습니다. 그래서 이 값들만 보던 초기 버전은 세 테스트가 서로 구별되지 않았고,
+워터마크를 아예 그리지 않아도 통과했습니다.
+
+**2. 형제 테스트끼리 서로 어긋나게 만드세요.**
+기본 크기(64x64) 테스트는 (56, 56)이 워터마크 색이어야 하고, 32x32 테스트는 같은
+좌표가 원본 색이어야 합니다. 크기 옵션이 동작하지 않으면 둘 중 하나는 반드시
+실패합니다.
+
+**3. 원본을 먼저 재서 기준으로 쓰세요.**
+"나머지는 그대로다"는 원본과 결과를 비교해야 하는 말입니다. `measureSample`이 그
+용도입니다.
+
+**4. 경계는 안쪽과 바깥쪽을 같이 확인하세요.**
+사각형 안의 마지막 픽셀과 그 바로 옆 픽셀을 함께 봅니다. 한쪽만 보면 크기가
+얼마든 통과합니다.
+
+**5. 전제도 확인하세요.**
+원본이 이미 그 색이면 픽셀 비교는 아무 의미가 없습니다. `assertWatermarkLayer`는
+이것을 가장 먼저 확인합니다.
+
+**6. 바뀌지 않아야 하는 것도 확인하세요.**
+워터마크에서 떨어진 픽셀들, 그리고 `-c:a copy`를 쓰는 연산이면 오디오 음량까지.
+복사는 재인코딩이 아니므로 음량이 비슷한 게 아니라 같아야 합니다.
+
+**7. 두 축이 서로 영향을 주지 않으면 하나씩 훑으세요.**
+비디오 코덱 3개 × 오디오 코덱 3개를 다 돌리면 9번인데, 오디오 코덱 확인을 비디오
+코덱마다 반복하는 셈입니다. 한 축을 고정하고 다른 축만 훑으면 3 + 3번으로 같은
+것을 확인합니다.
+
+**8. 일부러 깨뜨려서 빨간불이 켜지는지 보세요.**
+동작을 임시로 바꾼 뒤 의도한 테스트만 실패하는지 확인합니다. 투명도 테스트는 이렇게
+검증했습니다 — 필터 순서를 바꿔 버그를 고치면 세 컨테이너에서 2개씩 6개가 실패하고
+나머지 37개는 그대로 통과합니다.
+
+**9. 버그는 건너뛰지 말고 현재 동작으로 적어두세요.**
+원인과 고칠 방향을 주석에 남깁니다. 나중에 실제로 고쳤을 때 빨간불이 왜 켜졌는지
+바로 드러납니다.
+
+## 연산별로 스트림을 어떻게 다루는가
+
+테스트 결과를 해석할 때 가장 먼저 볼 표입니다.
+
+| 연산 | 영상 | 소리 | 코덱 지정 가능? |
+| --- | --- | --- | --- |
+| add-audio | `-c:v copy` | AAC로 재인코딩 | 불가 |
+| adjust-volume | `-c:v copy` | AAC로 재인코딩 | 불가 |
+| mute (전체) | `-c:v copy` | `-an`, 스트림 제거 | 불가 |
+| mute (구간) | `-c:v copy` | AAC로 재인코딩 | 불가 |
+| extract-audio | `-vn`, 스트림 제거 | 재인코딩, 포맷별 기본 코덱 | 일부 |
+| crop | 재인코딩, 기본 H.264 | 재인코딩, 기본 AAC | **가능** |
+| watermark | 재인코딩, H.264 고정 | `-c:a copy` | 불가 |
+| aspect-ratio | 재인코딩, 인자로 필수 | 인자로 필수 | **가능** |
+| 포맷 변환 | 계획에 따름 | 계획에 따름 | **가능** |
+
+`-c:a copy`와 `-c copy`만이 라이브러리가 인코딩할 수 없는 코덱을 지켜냅니다. 그래서
+워터마크는 PCM과 FLAC을 그대로 두는데, 나머지 연산은 전부 변환해 버립니다.
+
+## 컨테이너 규칙
+
+| 컨테이너 | 영상 출력 | 소리 출력 | 이유 |
+| --- | --- | --- | --- |
+| MP4 | H.264, H.265 | AAC, MP3, Opus | 등록된 코덱만 담김 — 코덱마다 정해진 자리가 필요 |
+| MOV | H.264, H.265 | AAC, MP3 | 편집용으로 자라난 포맷. Opus는 표준 자리가 없음 |
+| MKV | 위의 전부 | 위의 전부 | 코덱을 가리지 않음 — 코덱 ID와 설정값만 저장 |
+| WebM | VP8, VP9 | Opus | 브라우저용으로 일부러 좁혀 놓은 Matroska |
+
+테스트가 기대고 있는 사실들:
+
+- ffprobe는 `.mkv`와 `.webm`을 모두 `matroska,webm`으로 보고합니다. 둘을 가르는 건 확장자뿐입니다.
+- 파일을 **쓸 때는 확장자**가, **읽을 때는 파일 내용**이 포맷을 결정합니다. 그래서 삽입할 트랙 이름을 `<name>.<index>.input`으로 바꿔도 ffmpeg이 읽습니다.
+- 확장자가 먹서를 고르고, 같은 계열 먹서끼리도 규칙이 다릅니다. `.m4a`는 코덱을 제한하는 `ipod` 먹서라 MP3를 거부하고, `.mp4`는 `mp4` 먹서라 받습니다.
+- ffprobe는 `h265`를 `hevc`로, `pcm`을 `pcm_s16le`로 부릅니다.
+- `lavfi`의 `sine`은 모노로 나오고, ffmpeg 기본 `vorbis` 인코더는 스테레오만 받습니다.
+- 크롭 크기는 짝수로 내려갑니다. yuv420p가 2x2 블록마다 색 정보를 하나만 저장하기 때문입니다.
+- `-preset veryfast`는 x264/x265 전용 옵션입니다. libvpx에서는 경고만 나고 넘어가므로 WebM 화면비 변환도 성공합니다.
+
+## 이 테스트들이 기록한 문제
+
+아래는 **현재 그렇게 동작한다**고 단정해 둔 버그입니다. 고치면 해당 테스트가
+실패하는데, 그 빨간불이 "고쳐졌다"는 신호입니다. 그때 단정을 성공 쪽으로
+바꿔 주세요.
+
+1. **소리 관련 연산들이 출력 컨테이너를 보지 않습니다.** `add-audio`, `adjust-volume`,
+   구간 `mute`가 `-c:a aac`를 박아 두고 있어서 WebM 입력은 전부 헤더 쓰기 단계에서
+   실패합니다. `audio-addition/webm.test.ts`에 대조 케이스를 뒀습니다 — 같은 원본,
+   같은 비프음, 같은 필터로 `-c:a libopus`만 쓰면 성공합니다. 필요한 컨테이너별
+   기본값은 `CodecCompatibilityRepository`가 이미 알고 있습니다
+   (`output-support/codecCompatibility.test.ts` 참고).
+2. **크롭의 기본값도 컨테이너를 보지 않습니다.** 더 나쁜 쪽인데, `-c:v libx264`와
+   `-c:a aac`라서 영상과 소리가 둘 다 WebM 규칙을 벗어납니다. VP8/VP9와 Opus를
+   넘기면 성공하므로, 고칠 부분은 기능이 아니라 기본값입니다.
+3. **워터마크는 WebM에서 쓸 방법이 아예 없습니다.** `-c:v libx264`가 바꿀 수 없게
+   고정돼 있습니다. 명령에 출력 코덱 항목을 추가해야 합니다.
+4. **`add-audio`가 원본 소리를 섞지 않고 교체합니다.** `buildMixFilter`가 새로 넣는
+   트랙만 `amix`에 넣고, `0:v?`와 `[mixed]`만 매핑합니다. 컨테이너별 파일마다
+   볼륨 0인 비프음을 넣어 결과가 무음인지로 확인합니다.
+5. **`extract-audio`의 `.wav` 결과물은 재생이 안 됩니다.** 포맷별 기본 코덱이
+   `.mp3`와 `.ogg`를 뺀 전부를 AAC로 고르기 때문에 WAV에 AAC가 담깁니다. 먹싱은
+   되지만 디코딩이 깨집니다. 올바른 선택지도 없습니다 — `AudioCodec`에 PCM이
+   아예 없습니다.
+6. **워터마크 투명도가 전혀 적용되지 않습니다.** 워터마크 이미지에 알파 채널이
+   없는데 필터가 `colorchannelmixer=aa=<투명도>`를 `format=rgba`보다 먼저
+   실행합니다. 아직 없는 채널을 줄이니 아무 일도 안 일어나고, 그 다음
+   `format=rgba`가 불투명한 알파를 붙입니다. 그래서 `opacity: 0`을 줘도 진하게
+   그려집니다. 두 단계의 순서만 바꾸면 고쳐집니다 — 실제로 바꿔 보면 세 컨테이너에서
+   2개씩 6개가 실패하고 나머지 워터마크 테스트는 그대로 통과합니다.
+7. **크롭의 `output.format`이 반만 반영됩니다.** 출력 경로는 입력 파일 이름의
+   확장자에서 나오는데 MIME 타입은 `output.format`을 따릅니다. 그래서 다른
+   컨테이너를 요청하면 원래 컨테이너 파일에 요청한 이름표가 붙습니다.
+   `video-aspect-ratio`는 이 부분이 올바릅니다.
