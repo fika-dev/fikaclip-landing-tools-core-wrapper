@@ -1,13 +1,17 @@
 import type { FileData, ProgressEventCallback } from "@ffmpeg/ffmpeg";
 
-import type {
-  EditVideoAspectRatioEntity,
-  MediaSource,
-  AudioCodec,
-  VideoCodec,
-  VideoContainerFormat,
-  VideoAspectRatio,
-  VideoAspectRatioRepository,
+import {
+  assertOutputAudioCodec,
+  assertOutputVideoCodec,
+  type AudioCodec,
+  type EditVideoAspectRatioEntity,
+  type MediaSource,
+  type OutputAudioCodec,
+  type OutputVideoCodec,
+  type VideoAspectRatio,
+  type VideoAspectRatioRepository,
+  type VideoCodec,
+  type VideoContainerFormat,
 } from "../../domain";
 import { FfmpegRuntime, readFfmpegBytes, type FfmpegRuntimeConfig } from "../ffmpeg/FfmpegRuntime";
 
@@ -189,28 +193,27 @@ function isWasmMemoryAccessError(error: unknown) {
   return /memory access out of bounds|out of memory|wasm memory|WebAssembly/i.test(message);
 }
 
-function toFfmpegVideoCodec(codec: VideoCodec) {
-  const codecs: Record<VideoCodec, string> = {
-    copy: "copy",
-    h264: "libx264",
-    h265: "libx265",
-    vp8: "libvpx",
-    vp9: "libvpx-vp9",
-    av1: "libaom-av1",
-  };
+const FFMPEG_VIDEO_ENCODERS: Record<OutputVideoCodec | "copy", string> = {
+  copy: "copy",
+  h264: "libx264",
+  h265: "libx265",
+  vp8: "libvpx",
+  vp9: "libvpx-vp9",
+};
 
-  return codecs[codec];
+const FFMPEG_AUDIO_ENCODERS: Record<OutputAudioCodec | "copy", string> = {
+  copy: "copy",
+  aac: "aac",
+  opus: "libopus",
+  mp3: "libmp3lame",
+};
+
+function toFfmpegVideoCodec(codec: VideoCodec) {
+  return FFMPEG_VIDEO_ENCODERS[assertOutputVideoCodec(codec)];
 }
 
 function toFfmpegAudioCodec(codec: Exclude<AudioCodec, "none">) {
-  const codecs: Record<Exclude<AudioCodec, "none">, string> = {
-    copy: "copy",
-    aac: "aac",
-    opus: "libopus",
-    mp3: "libmp3lame",
-  };
-
-  return codecs[codec];
+  return FFMPEG_AUDIO_ENCODERS[assertOutputAudioCodec(codec)];
 }
 
 export function readVideoAspectRatioOutputBytes(data: FileData) {

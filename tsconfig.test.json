@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["node"],
+    // Tests run on Node, not in the browser, so `new Error(message, { cause })`
+    // is available even though the shipped library targets ES2020.
+    "lib": ["DOM", "DOM.Iterable", "ES2020", "ES2022.Error"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": []
+}

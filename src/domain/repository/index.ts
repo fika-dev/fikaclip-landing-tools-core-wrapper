@@ -3,6 +3,7 @@ export * from "./CodecCompatibilityRepository";
 export * from "./CreateVideoFormatConversionPlanRepository";
 export * from "./InspectMediaRepository";
 export * from "./MediaFormatNormalization";
+export * from "./MediaOutputValidation";
 export * from "./MediaProbeRepository";
 export * from "./MediaTranscodeRepository";
 export * from "./Repository";
