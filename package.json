@@ -25,19 +25,9 @@
     "build": "npm run clean && npm run build:types && npm run build:bundle && node scripts/copy-ffmpeg-runtime-assets.mjs",
     "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
     "build:bundle": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2020 --sourcemap --outfile=dist/index.js",
+    "test:media": "node --import tsx --test \"src/test/**/*.test.ts\"",
+    "test:media:one": "node --import tsx --test",
     "test:synthetic:usecases": "npm run build && node scripts/synthetic/run-all.mjs",
-    "test:media:build": "esbuild src/test/*/*.test.ts --bundle --platform=node --format=esm --target=node22 --outdir=dist-test --out-extension:.js=.mjs --external:@ffmpeg/*",
-    "test:media": "npm run test:media:build && node --test dist-test/*/*.test.mjs",
-    "test:media:fixtures": "npm run test:media:build && node --test dist-test/fixtures/*.test.mjs",
-    "test:media:output-support": "npm run test:media:build && node --test dist-test/output-support/*.test.mjs",
-    "test:media:audio-addition": "npm run test:media:build && node --test dist-test/audio-addition/*.test.mjs",
-    "test:media:audio-volume": "npm run test:media:build && node --test dist-test/audio-volume/*.test.mjs",
-    "test:media:audio-mute": "npm run test:media:build && node --test dist-test/audio-mute/*.test.mjs",
-    "test:media:audio-extraction": "npm run test:media:build && node --test dist-test/audio-extraction/*.test.mjs",
-    "test:media:video-crop": "npm run test:media:build && node --test dist-test/video-crop/*.test.mjs",
-    "test:media:watermark": "npm run test:media:build && node --test dist-test/watermark/*.test.mjs",
-    "test:media:video-aspect-ratio": "npm run test:media:build && node --test dist-test/video-aspect-ratio/*.test.mjs",
-    "test:media:video-format-conversion": "npm run test:media:build && node --test dist-test/video-format-conversion/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json",
     "pack:artifact": "npm run build && npm pack --pack-destination dist"
@@ -50,6 +40,7 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "esbuild": "^0.25.9",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.2"
   }
 }

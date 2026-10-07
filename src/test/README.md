@@ -4,14 +4,29 @@
 설치된 `ffmpeg`으로 돌아갑니다.
 
 ```
-npm run test:media                       # 전체 (, 약 90초)
-npm run test:media:watermark             # 연산 하나 (10~15초)
-npm run test:media:output-support        # 미디어가 필요 없는 테스트 (1초)
-npm run typecheck:test                   # 테스트 타입체크 (빌드 설정은 src/test 를 제외함)
+npm run test:media                                   # 전체 (354개, 약 105초)
+npm run test:media:one -- 'src/test/watermark/*.test.ts'   # 연산 하나
+npm run typecheck:test                               # 테스트 타입체크 (빌드 설정은 src/test 를 제외함)
 ```
 
-연산별 스크립트가 디렉터리마다 하나씩 있습니다. `npm run`을 인자 없이 실행하면
-목록이 나옵니다.
+`tsx`로 TS를 그대로 실행하므로 번들 단계가 없고, **파일 하나만 독립 실행**됩니다.
+
+```
+node --import tsx --test src/test/watermark/mp4.test.ts
+```
+
+글롭은 Node가 직접 펼치므로 셸이 필요 없습니다 — IDE 실행 구성에 그대로 넣을 수 있습니다.
+
+```
+WebStorm → Run/Debug Configurations → + → Node.js
+  Working directory : lib/video-editor
+  Node options      : --import tsx --test
+  JavaScript file   : src/test/watermark/mp4.test.ts
+```
+
+디렉터리 전체를 돌리려면 `JavaScript file` 대신 `Application parameters`에
+`'src/test/watermark/*.test.ts'` 처럼 패턴을 넣으면 됩니다. 소스를 직접 돌리므로
+브레이크포인트도 TS에 그대로 걸립니다.
 
 ## 구성
 
