@@ -3,6 +3,8 @@ import type { FileData, ProgressEventCallback } from "@ffmpeg/ffmpeg";
 import {
   assertOutputAudioCodec,
   assertOutputVideoCodec,
+  type MediaCommandRuntime,
+  MediaRuntimeExhaustedError,
   type AudioCodec,
   type EditVideoAspectRatioEntity,
   type MediaSource,
@@ -13,7 +15,7 @@ import {
   type VideoCodec,
   type VideoContainerFormat,
 } from "../../domain";
-import { FfmpegRuntime, readFfmpegBytes, type FfmpegRuntimeConfig } from "../ffmpeg/FfmpegRuntime";
+import { readFfmpegBytes } from "../ffmpeg/FfmpegRuntime";
 
 const MIME_TYPE_BY_FORMAT: Record<VideoContainerFormat, string> = {
   mp4: "video/mp4",
@@ -22,19 +24,17 @@ const MIME_TYPE_BY_FORMAT: Record<VideoContainerFormat, string> = {
   mkv: "video/x-matroska",
 };
 
-type AspectRatioRuntime = Pick<FfmpegRuntime, "writeFile" | "readFile" | "deleteFile" | "exec" | "onProgress" | "offProgress" | "terminate">;
-
-export type FfmpegVideoAspectRatioRepositoryConfig = FfmpegRuntimeConfig & {
-  runtime?: AspectRatioRuntime;
+export type FfmpegVideoAspectRatioRepositoryConfig = {
+  runtime: MediaCommandRuntime;
 };
 
 export class FfmpegVideoAspectRatioRepository implements VideoAspectRatioRepository {
   readonly id = "ffmpeg-video-aspect-ratio";
 
-  private readonly runtime: AspectRatioRuntime;
+  private readonly runtime: MediaCommandRuntime;
 
   constructor(config: FfmpegVideoAspectRatioRepositoryConfig) {
-    this.runtime = config.runtime ?? new FfmpegRuntime(config);
+    this.runtime = config.runtime;
   }
 
   async execute(entity: EditVideoAspectRatioEntity): Promise<EditVideoAspectRatioEntity> {
@@ -45,7 +45,7 @@ export class FfmpegVideoAspectRatioRepository implements VideoAspectRatioReposit
     const progressCallback: ProgressEventCallback = ({ progress }) => {
       command.job?.onProgress?.({ jobId, phase: "transcoding", ratio: clampProgress(progress) });
     };
-    let shouldTerminateRuntime = false;
+    let runtimeUnusable = false;
 
     command.job?.onProgress?.({ jobId, phase: "transcoding", ratio: 0 });
 
@@ -103,24 +103,21 @@ export class FfmpegVideoAspectRatioRepository implements VideoAspectRatioReposit
     } catch (error) {
       if (isAbortError(error)) throw error;
       if (isWasmMemoryAccessError(error)) {
-        shouldTerminateRuntime = true;
-        throw new Error("FFmpeg WebAssembly memory was exhausted while editing this video ratio.");
+        runtimeUnusable = true;
+        throw new MediaRuntimeExhaustedError(error);
       }
       throw error;
     } finally {
       this.runtime.offProgress(progressCallback);
-      if (shouldTerminateRuntime) {
-        this.runtime.terminate();
-      } else {
+      // An exhausted runtime may not answer another call, so its FS is left as
+      // is; the owner decides whether to recycle it.
+      if (!runtimeUnusable) {
         await this.runtime.deleteFile(inputPath);
         if (outputPath) await this.runtime.deleteFile(outputPath);
       }
     }
   }
 
-  dispose() {
-    this.runtime.terminate();
-  }
 }
 
 function buildCenterPadFilter(aspectRatio: VideoAspectRatio) {

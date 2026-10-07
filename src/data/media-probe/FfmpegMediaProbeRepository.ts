@@ -6,26 +6,21 @@ import {
   type MediaInspectionResult,
   type MediaProbeRepository,
   type MediaSource,
+  type MediaCommandRuntime,
 } from "../../domain";
-import { FfmpegRuntime, type FfmpegRuntimeConfig } from "../ffmpeg/FfmpegRuntime";
 import { BrowserMediaProbeRepository } from "./BrowserMediaProbeRepository";
 
-type ProbeRuntime = Pick<
-  FfmpegRuntime,
-  "writeFile" | "deleteFile" | "exec" | "terminate"
->;
-
-export type FfmpegMediaProbeRepositoryConfig = FfmpegRuntimeConfig & {
-  runtime?: ProbeRuntime;
+export type FfmpegMediaProbeRepositoryConfig = {
+  runtime: MediaCommandRuntime;
 };
 
 export class FfmpegMediaProbeRepository implements MediaProbeRepository {
   readonly id = "ffmpeg-media-probe";
-  private readonly runtime: ProbeRuntime;
+  private readonly runtime: MediaCommandRuntime;
   private readonly browserProbe = new BrowserMediaProbeRepository();
 
   constructor(config: FfmpegMediaProbeRepositoryConfig) {
-    this.runtime = config.runtime ?? new FfmpegRuntime(config);
+    this.runtime = config.runtime;
   }
 
   async execute(entity: InspectMediaEntity): Promise<InspectMediaEntity> {
@@ -45,12 +40,9 @@ export class FfmpegMediaProbeRepository implements MediaProbeRepository {
     }
   }
 
-  dispose() {
-    this.runtime.terminate();
-  }
 }
 
-async function detectAudioTrackCount(runtime: ProbeRuntime, inputPath: string, signal?: AbortSignal) {
+async function detectAudioTrackCount(runtime: MediaCommandRuntime, inputPath: string, signal?: AbortSignal) {
   const tracks: number[] = [];
   for (let index = 0; index < 8; index += 1) {
     const exitCode = await runtime.exec(

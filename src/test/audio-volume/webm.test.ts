@@ -28,12 +28,10 @@ const EXPECTED_MIME_TYPE = "video/webm";
  * that hit the wrong range, or the whole track, because the overall average moves
  * either way.
  *
- * Both windows stop short of the 0.5s switch point on purpose. AAC frames are
- * 1024 samples — about 21ms — and neither the filter's switch nor `-ss`/`-t`
- * trimming lands on a frame boundary, so a window that reaches the switch mixes
- * in samples from the other side. Measured flush against it, a halving reads as
- * -5.0 dB instead of -6.02 and a silenced half reads as -50 dB instead of -91.
- * With this margin both come out within 0.02 dB of theory.
+ * Both windows stop short of the 0.5s switch point on purpose. Audio frames are
+ * ~20ms and neither the filter's switch nor `-ss`/`-t` trimming lands on a frame
+ * boundary, so a window that reaches the switch mixes in samples from the other
+ * side. Measured flush against it, a halving reads as -5.0 dB instead of -6.02.
  */
 const FIRST_HALF: AudioSegmentWindow = { startSeconds: 0.05, durationSeconds: 0.35 };
 const SECOND_HALF: AudioSegmentWindow = { startSeconds: 0.6, durationSeconds: 0.35 };
@@ -42,16 +40,12 @@ const HALVES = [FIRST_HALF, SECOND_HALF] as const;
 const firstHalfAt = (volume: number): AudioVolumeSegment[] => [{ startSeconds: 0, endSeconds: 0.5, volume }];
 
 /**
- * Volume adjustment re-encodes audio to AAC and copies the video, and it applies
- * `-af` without a `-map`, so it works on whichever single audio track FFmpeg
- * selects. The command has no track selector — see the multi-track group.
+ * WebM used to fail here outright: the operation chose `-c:a aac` without
+ * consulting the container, and WebM rejects AAC.
  *
- * WebM has no valid combination today. The operation hardcodes `-c:a aac` without
- * consulting the container, so the WebM muxer rejects every output. When the
- * repository learns to pick a container-legal encoder — Opus for WebM, which
- * `CodecCompatibilityRepository` already knows — these cases will start failing,
- * and that is the signal to turn them into the success assertions the other three
- * containers use.
+ * Now it declares only that it re-encodes audio and copies video, and the
+ * container supplies the codec — Opus. So the output codec differs from the other
+ * containers' AAC while everything else about the operation is identical.
  */
 describe("webm 컨테이너 오디오 볼륨 조절", () => {
   const measurements = new Map<string, SampleMeasurement>();
@@ -75,31 +69,115 @@ describe("webm 컨테이너 오디오 볼륨 조절", () => {
     return outcome.segments;
   };
 
-  describe("현재 동작 기록: WebM 먹서가 AAC 를 거부해 모든 조절이 실패한다", () => {
+  describe("오디오 코덱별 — 앞 절반만 50% 로 줄인다", () => {
     for (const sample of MATRIX.withVideo("vp9")) {
-      it(`${sample.audioCodec} 소스의 볼륨 조절이 '-c:a aac' 하드코딩 때문에 실패한다`, async () => {
-        await assert.rejects(
-          () => adjustSampleVolume({ sample, segments: firstHalfAt(0.5), segmentWindows: HALVES }),
-          (error: unknown) => {
-            assert.ok(error instanceof Error);
-            assert.match(error.message, /ffmpeg adjust-volume failed with exit code \d+\./);
-            assert.match(error.message, /-c:a aac/);
-            assert.match(error.message, /supported for WebM/);
-            return true;
-          },
-        );
-      });
-    }
+      it(`${sample.audioCodec} 소스의 앞 절반만 -6 dB 가 된다`, async () => {
+        const outcome = await adjustSampleVolume({
+          sample,
+          segments: firstHalfAt(0.5),
+          segmentWindows: HALVES,
+        });
 
-    for (const sample of MATRIX.withAudio("opus")) {
-      it(`${sample.videoCodec} 영상의 볼륨 조절도 동일하게 실패한다`, async () => {
-        // Sweeping the video axis shows the failure is about the audio codec: VP8,
-        // VP9 and AV1 are all in WebM's profile, so none of them is the cause.
-        await assert.rejects(
-          () => adjustSampleVolume({ sample, segments: firstHalfAt(0.5) }),
-          /supported for WebM/,
-        );
+        assertMediaOutput(outcome, {
+          container: "webm",
+          mimeType: EXPECTED_MIME_TYPE,
+          videoCodec: toProbeVideoCodecName(sample.videoCodec),
+          audioCodec: "opus",
+          audible: true,
+          channels: 2,
+          sampleRate: 48000,
+          durationSeconds: 1,
+        });
+        assertSegmentVolumes({
+          outputSegments: segmentsOf(outcome),
+          sourceSegments: sourceOf(sample),
+          expected: [
+            { volume: 0.5, label: `${sample.audioCodec} 앞 절반` },
+            { volume: 1, label: `${sample.audioCodec} 뒤 절반 (건드리지 않음)` },
+          ],
+        });
       });
     }
+  });
+
+  describe("볼륨 배율별 — 0% 부터 200% 까지 요청한 만큼만 바뀐다", () => {
+    const FACTORS = [
+      { volume: 0, label: "0% (무음)" },
+      { volume: 0.5, label: "50% (-6.02 dB)" },
+      { volume: 1, label: "100% (변화 없음)" },
+      { volume: 1.5, label: "150% (+3.52 dB)" },
+      { volume: 2, label: "200% (+6.02 dB)" },
+    ];
+
+    for (const { volume, label } of FACTORS) {
+      it(`${label} 로 요청하면 앞 절반만 그만큼 바뀐다`, async () => {
+        const outcome = await adjustSampleVolume({
+          sample: PINNED_SAMPLE,
+          segments: firstHalfAt(volume),
+          segmentWindows: HALVES,
+        });
+
+        assertSegmentVolumes({
+          outputSegments: segmentsOf(outcome),
+          sourceSegments: sourceOf(PINNED_SAMPLE),
+          expected: [
+            { volume, label: `앞 절반 @ ${volume}` },
+            { volume: 1, label: "뒤 절반 (건드리지 않음)" },
+          ],
+        });
+      });
+    }
+  });
+
+  describe("여러 구간 — 구간마다 다른 배율이 적용되고 사이 구간은 그대로다", () => {
+    /**
+     * Three slices — the two the operation names, and the gap between them — each
+     * kept clear of the range boundaries for the reason described above.
+     */
+    const SLICES: AudioSegmentWindow[] = [
+      { startSeconds: 0.05, durationSeconds: 0.2 },
+      { startSeconds: 0.38, durationSeconds: 0.14 },
+      { startSeconds: 0.68, durationSeconds: 0.25 },
+    ];
+
+    it("앞 구간은 50%, 뒤 구간은 200%, 사이는 그대로다", async () => {
+      const source = await measureSample(PINNED_SAMPLE, { segmentWindows: SLICES });
+      assert.ok(source.segments, "source slices must be measured");
+
+      const outcome = await adjustSampleVolume({
+        sample: PINNED_SAMPLE,
+        segments: [
+          { startSeconds: 0, endSeconds: 0.3, volume: 0.5 },
+          { startSeconds: 0.6, endSeconds: 1, volume: 2 },
+        ],
+        segmentWindows: SLICES,
+      });
+
+      assertSegmentVolumes({
+        outputSegments: segmentsOf(outcome),
+        sourceSegments: source.segments,
+        expected: [
+          { volume: 0.5, label: "[0.05, 0.25] @ 50%" },
+          // The gap is what proves the two filters stayed inside their ranges.
+          { volume: 1, label: "[0.38, 0.52] 사이 구간 (요청하지 않음)" },
+          { volume: 2, label: "[0.68, 0.93] @ 200%" },
+        ],
+      });
+    });
+
+    it("구간을 비워 두면 중립 필터가 적용되어 전체가 그대로다", async () => {
+      // An empty list makes the repository emit `volume=1`, so the audio is still
+      // re-encoded but not changed.
+      const outcome = await adjustSampleVolume({ sample: PINNED_SAMPLE, segments: [], segmentWindows: HALVES });
+
+      assertSegmentVolumes({
+        outputSegments: segmentsOf(outcome),
+        sourceSegments: sourceOf(PINNED_SAMPLE),
+        expected: [
+          { volume: 1, label: "앞 절반" },
+          { volume: 1, label: "뒤 절반" },
+        ],
+      });
+    });
   });
 });

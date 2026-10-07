@@ -36,9 +36,10 @@ function plan(
  * The conversion planner decides *how* a conversion runs before any media is
  * touched, so it can be pinned without FFmpeg.
  *
- * This is also where the library already knows the per-container codec rules
- * the editing operations do not consult — the knowledge exists, it is just not
- * shared yet.
+ * The per-container codec table it reads is now shared with every other
+ * operation through `defaultOutputCodecsFor`, so what is pinned here is the
+ * planner's own decisions: which mode to use, and when a re-encode can be
+ * downgraded to a copy.
  */
 describe("포맷 변환 계획 수립", () => {
   it("코덱을 지정하지 않으면 리먹싱으로 계획된다", () => {
@@ -62,9 +63,10 @@ describe("포맷 변환 계획 수립", () => {
       { format: "mp4", videoCodec: "h264", audioCodec: "aac" },
       { format: "mov", videoCodec: "h264", audioCodec: "aac" },
       { format: "mkv", videoCodec: "h264", audioCodec: "aac" },
-      // WebM is the interesting one: the planner already knows the container
-      // cannot take H.264 or AAC. The media-editing operations hardcode AAC and
-      // never ask, which is the root of their WebM failures.
+      // WebM is the interesting one: it cannot take H.264 or AAC. This table was
+      // once private to the planner, which is why every other operation
+      // hardcoded AAC and failed on WebM; `defaultOutputCodecsFor` now publishes
+      // it and `resolveMediaOutputProfile` applies it everywhere.
       { format: "webm", videoCodec: "vp9", audioCodec: "opus" },
     ] as const;
 

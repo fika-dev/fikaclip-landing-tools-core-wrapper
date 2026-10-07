@@ -86,6 +86,35 @@ export function isOutputAudioCodec(codec: AudioCodec | undefined): codec is Outp
   return OUTPUT_AUDIO_CODECS.includes(codec as OutputAudioCodec);
 }
 
+export type MediaOutputCodecs = {
+  videoCodec: OutputVideoCodec;
+  audioCodec: OutputAudioCodec;
+};
+
+/**
+ * What to write when the caller names a container but no codecs.
+ *
+ * Stated explicitly rather than taken from the first entry of the lists above:
+ * those lists are capability sets with no preference order, and WebM in
+ * particular should default to VP9 rather than the VP8 that happens to be listed
+ * first.
+ *
+ * This table used to live inside `CodecCompatibilityRepository`, where only
+ * format conversion could reach it — which is why every other operation
+ * hardcoded AAC and failed on WebM. It is container knowledge, so it belongs
+ * with the rest of the container rules.
+ */
+const DEFAULT_OUTPUT_CODECS_BY_FORMAT: Record<VideoContainerFormat, MediaOutputCodecs> = {
+  mp4: { videoCodec: "h264", audioCodec: "aac" },
+  mov: { videoCodec: "h264", audioCodec: "aac" },
+  webm: { videoCodec: "vp9", audioCodec: "opus" },
+  mkv: { videoCodec: "h264", audioCodec: "aac" },
+};
+
+export function defaultOutputCodecsFor(format: VideoContainerFormat): MediaOutputCodecs {
+  return DEFAULT_OUTPUT_CODECS_BY_FORMAT[format];
+}
+
 export function listOutputVideoCodecs(format: VideoContainerFormat): readonly OutputVideoCodec[] {
   return OUTPUT_VIDEO_CODECS_BY_FORMAT[format];
 }

@@ -1,8 +1,6 @@
 import { NodeFfmpegMediaEditRuntime } from "./NodeFfmpegMediaEditRuntime";
 
 export type TestRuntimeConfig = {
-  coreURL: string;
-  wasmURL: string;
   runtime: NodeFfmpegMediaEditRuntime;
 };
 
@@ -12,10 +10,16 @@ export type TestRuntimeConfig = {
  *
  * Everything else — the repositories, the `UseCase` wiring, the commands, the
  * entities — is the real thing, imported from the package entry. Only the
- * execution backend is swapped: `FfmpegRuntime` drives ffmpeg.wasm through
+ * execution backend differs: `FfmpegRuntime` drives ffmpeg.wasm through
  * `@ffmpeg/ffmpeg`, which needs the browser's `Worker` global and cannot run in
- * Node at all, so a Node-backed stand-in takes its place and the repository's
- * argument list is handed to the system `ffmpeg` untouched.
+ * Node at all, so a Node-backed implementation of the same `MediaCommandRuntime`
+ * contract takes its place and the repository's argument list is handed to the
+ * system `ffmpeg` untouched.
+ *
+ * Note that passing a runtime is no longer a test-only affordance: repositories
+ * require one, because a runtime holds a ~31 MB WebAssembly core and is owned by
+ * whoever composed the use case. The tests and the app construct them the same
+ * way.
  *
  * What that means for what these tests prove:
  *
@@ -26,15 +30,7 @@ export type TestRuntimeConfig = {
  *   which only exist in a browser.
  *
  * Closing that second gap needs a browser-driven test, not a Node one.
- *
- * The URLs below are deliberately unreachable: with `runtime` supplied,
- * `FfmpegRuntime` is never constructed, and a real URL here would hide an
- * accidental fall-through to ffmpeg.wasm instead of failing loudly.
  */
 export function createTestRuntimeConfig(workDir: string): TestRuntimeConfig {
-  return {
-    coreURL: "https://example.invalid/ffmpeg-core.js",
-    wasmURL: "https://example.invalid/ffmpeg-core.wasm",
-    runtime: new NodeFfmpegMediaEditRuntime(workDir),
-  };
+  return { runtime: new NodeFfmpegMediaEditRuntime(workDir) };
 }

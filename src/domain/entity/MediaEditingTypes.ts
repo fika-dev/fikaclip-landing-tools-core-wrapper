@@ -39,13 +39,27 @@ export type WatermarkLayer = {
   opacity?: number;
 };
 
+/**
+ * Where an operation should land: container and codecs.
+ *
+ * Shared by every operation so a caller can pass the final target down a chain —
+ * ask for Opus at the volume step and the later WebM mux becomes a remux rather
+ * than a second lossy encode. Any field left out is filled from the container's
+ * own rules; see `resolveMediaOutputProfile`.
+ */
+export type MediaEditOutput = {
+  format?: VideoContainerFormat;
+  videoCodec?: VideoCodec;
+  audioCodec?: AudioCodec;
+};
+
 export type MediaEditCommand =
   | {
       operation: "crop";
       source: MediaSource;
       fileName?: string;
       region: CropRegion;
-      output?: { format?: VideoContainerFormat; videoCodec?: VideoCodec; audioCodec?: AudioCodec };
+      output?: MediaEditOutput;
       job?: MediaToolJobOptions;
     }
   | {
@@ -62,6 +76,7 @@ export type MediaEditCommand =
       source: MediaSource;
       fileName?: string;
       segments: AudioVolumeSegment[];
+      output?: MediaEditOutput;
       job?: MediaToolJobOptions;
     }
   | {
@@ -70,6 +85,7 @@ export type MediaEditCommand =
       fileName?: string;
       segments?: MuteSegment[];
       muteAll?: boolean;
+      output?: MediaEditOutput;
       job?: MediaToolJobOptions;
     }
   | {
@@ -77,6 +93,7 @@ export type MediaEditCommand =
       source: MediaSource;
       fileName?: string;
       tracks: AudioTrack[];
+      output?: MediaEditOutput;
       job?: MediaToolJobOptions;
     }
   | {
@@ -84,6 +101,7 @@ export type MediaEditCommand =
       source: MediaSource;
       fileName?: string;
       layer: WatermarkLayer;
+      output?: MediaEditOutput;
       job?: MediaToolJobOptions;
     };
 
