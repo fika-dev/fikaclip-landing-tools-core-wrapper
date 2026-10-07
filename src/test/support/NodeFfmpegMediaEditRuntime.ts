@@ -1,7 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import type { FileData, ProgressEventCallback } from "@ffmpeg/ffmpeg";
+import type {
+  MediaCommandRuntime,
+  MediaFileData,
+  MediaFileSource,
+  MediaRuntimeProgressCallback,
+} from "../../index";
 
 import { spawnCommand } from "./spawnCommand";
 
@@ -17,8 +22,8 @@ import { spawnCommand } from "./spawnCommand";
  * Progress callbacks are accepted to satisfy the runtime contract but never
  * fire, because the CLI's progress output is not parsed here.
  */
-export class NodeFfmpegMediaEditRuntime {
-  private readonly progressCallbacks = new Set<ProgressEventCallback>();
+export class NodeFfmpegMediaEditRuntime implements MediaCommandRuntime {
+  private readonly progressCallbacks = new Set<MediaRuntimeProgressCallback>();
 
   /** Exact argument list of the last `exec`, for failure diagnostics. */
   lastArgs: string[] = [];
@@ -28,19 +33,19 @@ export class NodeFfmpegMediaEditRuntime {
 
   constructor(private readonly workDir: string) {}
 
-  onProgress(callback: ProgressEventCallback) {
+  onProgress(callback: MediaRuntimeProgressCallback) {
     this.progressCallbacks.add(callback);
   }
 
-  offProgress(callback: ProgressEventCallback) {
+  offProgress(callback: MediaRuntimeProgressCallback) {
     this.progressCallbacks.delete(callback);
   }
 
-  async writeFile(filePath: string, source: string | File | Blob | Uint8Array, options?: { signal?: AbortSignal }) {
+  async writeFile(filePath: string, source: MediaFileSource, options?: { signal?: AbortSignal }) {
     await fs.writeFile(this.resolve(filePath), await toBytes(source), { signal: options?.signal });
   }
 
-  async readFile(filePath: string, _encoding?: string, options?: { signal?: AbortSignal }): Promise<FileData> {
+  async readFile(filePath: string, _encoding?: string, options?: { signal?: AbortSignal }): Promise<MediaFileData> {
     const bytes = await fs.readFile(this.resolve(filePath), { signal: options?.signal });
     return new Uint8Array(bytes);
   }
@@ -71,7 +76,7 @@ export class NodeFfmpegMediaEditRuntime {
   }
 }
 
-async function toBytes(source: string | File | Blob | Uint8Array): Promise<Uint8Array> {
+async function toBytes(source: MediaFileSource): Promise<Uint8Array> {
   if (source instanceof Uint8Array) return source;
   if (source instanceof Blob) return new Uint8Array(await source.arrayBuffer());
 

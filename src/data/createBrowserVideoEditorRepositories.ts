@@ -7,6 +7,7 @@ import {
   type ConvertVideoFormatEntity,
   type ConvertVideoFormatResult,
 } from "../domain";
+import { FfmpegRuntime } from "./ffmpeg";
 import { BrowserMediaProbeRepository } from "./media-probe";
 import { FfmpegVideoFormatTranscodeRepository } from "./video-format-conversion";
 
@@ -24,6 +25,12 @@ export type BrowserVideoEditorRuntimeConfig =
 
 export type BrowserVideoEditorRepositories = {
   videoFormatConversionRepository: VideoFormatConversionRepository;
+  /**
+   * Releases the shared runtime, and with it the WebAssembly core and its
+   * worker. Whoever called the factory owns this; the repositories cannot do it
+   * themselves, because one shared runtime serves all of them.
+   */
+  dispose(): void;
 };
 
 export interface VideoFormatConversionRepository {
@@ -33,8 +40,12 @@ export interface VideoFormatConversionRepository {
 export function createBrowserVideoEditorRepositories(
   config: BrowserVideoEditorRuntimeConfig,
 ): BrowserVideoEditorRepositories {
+  // One runtime for every repository assembled here: in the browser each one
+  // loads its own ~31 MB WebAssembly core into its own worker, so creating them
+  // per repository multiplied that cost for no benefit.
+  const runtime = new FfmpegRuntime(config);
   const mediaProbeRepository = new BrowserMediaProbeRepository();
-  const mediaTranscodeRepository = new FfmpegVideoFormatTranscodeRepository(config);
+  const mediaTranscodeRepository = new FfmpegVideoFormatTranscodeRepository({ runtime });
   const convertVideoFormatUseCase = new UseCase<ConvertVideoFormatEntity>(
     [
       new CreateVideoFormatConversionPlanRepository(mediaProbeRepository, new CodecCompatibilityRepository()),
@@ -43,6 +54,7 @@ export function createBrowserVideoEditorRepositories(
   );
 
   return {
+    dispose: () => runtime.terminate(),
     videoFormatConversionRepository: {
       convert: async (command) => {
         const entity = await convertVideoFormatUseCase.execute({

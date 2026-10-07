@@ -3,6 +3,8 @@ import type { FileData, ProgressEventCallback } from "@ffmpeg/ffmpeg";
 import {
   assertOutputAudioCodec,
   assertOutputVideoCodec,
+  type MediaCommandRuntime,
+  MediaRuntimeExhaustedError,
   type AudioCodec,
   type ConvertVideoFormatEntity,
   type ConvertVideoFormatPlan,
@@ -13,7 +15,7 @@ import {
   type VideoCodec,
   type VideoContainerFormat,
 } from "../../domain";
-import { FfmpegRuntime, readFfmpegBytes, type FfmpegRuntimeConfig } from "../ffmpeg/FfmpegRuntime";
+import { readFfmpegBytes } from "../ffmpeg/FfmpegRuntime";
 
 const MIME_TYPE_BY_FORMAT: Record<VideoContainerFormat, string> = {
   mp4: "video/mp4",
@@ -22,22 +24,17 @@ const MIME_TYPE_BY_FORMAT: Record<VideoContainerFormat, string> = {
   mkv: "video/x-matroska",
 };
 
-type MediaTranscodeRuntime = Pick<
-  FfmpegRuntime,
-  "writeFile" | "readFile" | "deleteFile" | "exec" | "onProgress" | "offProgress" | "terminate"
->;
-
-export type FfmpegVideoFormatTranscodeRepositoryConfig = FfmpegRuntimeConfig & {
-  runtime?: MediaTranscodeRuntime;
+export type FfmpegVideoFormatTranscodeRepositoryConfig = {
+  runtime: MediaCommandRuntime;
 };
 
 export class FfmpegVideoFormatTranscodeRepository implements MediaTranscodeRepository {
   readonly id = "ffmpeg-video-format-transcode";
 
-  private readonly runtime: MediaTranscodeRuntime;
+  private readonly runtime: MediaCommandRuntime;
 
   constructor(config: FfmpegVideoFormatTranscodeRepositoryConfig) {
-    this.runtime = config.runtime ?? new FfmpegRuntime(config);
+    this.runtime = config.runtime;
   }
 
   async execute(entity: ConvertVideoFormatEntity): Promise<ConvertVideoFormatEntity> {
@@ -57,7 +54,7 @@ export class FfmpegVideoFormatTranscodeRepository implements MediaTranscodeRepos
     const progressCallback: ProgressEventCallback = ({ progress }) => {
       command.job?.onProgress?.({ jobId, phase: "transcoding", ratio: clampProgress(progress) });
     };
-    let shouldTerminateRuntime = false;
+    let runtimeUnusable = false;
 
     try {
       this.runtime.onProgress(progressCallback);
@@ -92,27 +89,22 @@ export class FfmpegVideoFormatTranscodeRepository implements MediaTranscodeRepos
       }
 
       if (isWasmMemoryAccessError(error)) {
-        shouldTerminateRuntime = true;
-        throw new Error(
-          "FFmpeg WebAssembly memory was exhausted while converting this video. Try a smaller file, a shorter clip, or a lighter codec.",
-        );
+        runtimeUnusable = true;
+        throw new MediaRuntimeExhaustedError(error);
       }
 
       throw error;
     } finally {
       this.runtime.offProgress(progressCallback);
-      if (shouldTerminateRuntime) {
-        this.runtime.terminate();
-      } else {
+      // An exhausted runtime may not answer another call, so its FS is left as
+      // is; the owner decides whether to recycle it.
+      if (!runtimeUnusable) {
         await this.runtime.deleteFile(inputPath);
         await this.runtime.deleteFile(outputPath);
       }
     }
   }
 
-  dispose() {
-    this.runtime.terminate();
-  }
 }
 
 function buildConvertArgs(inputPath: string, outputPath: string, plan: ConvertVideoFormatPlan) {

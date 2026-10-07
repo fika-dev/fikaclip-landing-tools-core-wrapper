@@ -38,8 +38,9 @@ describe("mp4 컨테이너에 오디오 추가", () => {
           mimeType: EXPECTED_MIME_TYPE,
           // `-c:v copy` must carry the source codec through untouched...
           videoCodec: toProbeVideoCodecName(PINNED_SAMPLE.videoCodec),
-          // ...while the audio is always re-encoded to AAC, because the
-          // add-audio branch hardcodes `-c:a aac` whatever the input codec was.
+          // ...while the audio is re-encoded. The operation only says that it
+          // re-encodes; the codec comes from the container, and MP4's default is
+          // AAC. The same operation writes Opus into WebM.
           audioCodec: "aac",
           audible: true,
           channels: 2,

@@ -1,24 +1,18 @@
-import type {
-  AudioCodec,
-  ConvertVideoFormatEntity,
-  ConvertVideoFormatOutput,
-  ConvertVideoFormatPlan,
-  MediaMetadata,
-  ResolvedConvertVideoFormatOutput,
-  VideoCodec,
-  VideoContainerFormat,
-  VideoFormatConversionMode,
+import {
+  defaultOutputCodecsFor,
+  type AudioCodec,
+  type ConvertVideoFormatEntity,
+  type ConvertVideoFormatOutput,
+  type ConvertVideoFormatPlan,
+  type MediaMetadata,
+  type ResolvedConvertVideoFormatOutput,
+  type VideoCodec,
+  type VideoContainerFormat,
+  type VideoFormatConversionMode,
 } from "../entity";
 import { normalizeAudioCodec, normalizeVideoCodec } from "./MediaFormatNormalization";
 import { assertSupportedOutputRequest } from "./MediaOutputValidation";
 import type { Repository } from "./Repository";
-
-const DEFAULT_TARGET_CODECS: Record<VideoContainerFormat, { videoCodec: VideoCodec; audioCodec: AudioCodec }> = {
-  mp4: { videoCodec: "h264", audioCodec: "aac" },
-  webm: { videoCodec: "vp9", audioCodec: "opus" },
-  mov: { videoCodec: "h264", audioCodec: "aac" },
-  mkv: { videoCodec: "h264", audioCodec: "aac" },
-};
 
 export class CodecCompatibilityRepository implements Repository<ConvertVideoFormatEntity> {
   readonly id = "codec-compatibility";
@@ -73,7 +67,7 @@ export class CodecCompatibilityRepository implements Repository<ConvertVideoForm
       };
     }
 
-    const defaults = DEFAULT_TARGET_CODECS[output.format];
+    const defaults = defaultOutputCodecsFor(output.format);
     return {
       ...output,
       videoCodec: output.videoCodec ?? defaults.videoCodec,

@@ -3,6 +3,11 @@ import type { FileData, ProgressEventCallback } from "@ffmpeg/ffmpeg";
 import {
   assertOutputAudioCodec,
   assertOutputVideoCodec,
+  resolveMediaOutputProfile,
+  type MediaCommandRuntime,
+  type MediaOutputIntent,
+  type ResolvedMediaOutput,
+  MediaRuntimeExhaustedError,
   type AudioCodec,
   type AudioFormat,
   type MediaEditEntity,
@@ -13,7 +18,7 @@ import {
   type VideoCodec,
   type VideoContainerFormat,
 } from "../../domain";
-import { FfmpegRuntime, readFfmpegBytes, type FfmpegRuntimeConfig } from "../ffmpeg/FfmpegRuntime";
+import { readFfmpegBytes } from "../ffmpeg/FfmpegRuntime";
 
 const VIDEO_MIME_TYPES: Record<VideoContainerFormat, string> = {
   mp4: "video/mp4",
@@ -29,18 +34,16 @@ const AUDIO_MIME_TYPES: Record<AudioFormat, string> = {
   ogg: "audio/ogg",
 };
 
-type MediaEditRuntime = Pick<FfmpegRuntime, "writeFile" | "readFile" | "deleteFile" | "exec" | "onProgress" | "offProgress" | "terminate">;
-
-export type FfmpegMediaEditRepositoryConfig = FfmpegRuntimeConfig & {
-  runtime?: MediaEditRuntime;
+export type FfmpegMediaEditRepositoryConfig = {
+  runtime: MediaCommandRuntime;
 };
 
 export class FfmpegMediaEditRepository implements MediaEditRepository {
   readonly id: string = "ffmpeg-media-edit";
-  protected readonly runtime: MediaEditRuntime;
+  protected readonly runtime: MediaCommandRuntime;
 
   constructor(config: FfmpegMediaEditRepositoryConfig) {
-    this.runtime = config.runtime ?? new FfmpegRuntime(config);
+    this.runtime = config.runtime;
   }
 
   async execute(entity: MediaEditEntity): Promise<MediaEditEntity> {
@@ -51,7 +54,7 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
     const progressCallback: ProgressEventCallback = ({ progress }) => {
       command.job?.onProgress?.({ jobId, phase: "transcoding", ratio: clamp(progress) });
     };
-    let shouldTerminateRuntime = false;
+    let runtimeUnusable = false;
 
     try {
       this.runtime.onProgress(progressCallback);
@@ -81,23 +84,20 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
     } catch (error) {
       if (isAbortError(error)) throw error;
       if (isWasmMemoryAccessError(error)) {
-        shouldTerminateRuntime = true;
-        throw new Error("FFmpeg WebAssembly memory was exhausted while editing this media.");
+        runtimeUnusable = true;
+        throw new MediaRuntimeExhaustedError(error);
       }
       throw error;
     } finally {
       this.runtime.offProgress(progressCallback);
-      if (shouldTerminateRuntime) {
-        this.runtime.terminate();
-      } else {
+      // An exhausted runtime may not answer another call, so its FS is left as
+      // is; the owner decides whether to recycle it.
+      if (!runtimeUnusable) {
         await Promise.all([inputPath, outputPath, ...extraPaths].map((path) => this.runtime.deleteFile(path)));
       }
     }
   }
 
-  dispose() {
-    this.runtime.terminate();
-  }
 
   private async createArgs(
     command: MediaEditEntity["command"],
@@ -105,23 +105,31 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
     outputPath: string,
     extraPaths: string[],
   ) {
+    const container = resolveOutputContainer(command);
+    const profileFor = (intent: MediaOutputIntent) =>
+      resolveMediaOutputProfile({
+        format: container,
+        intent,
+        ...(command.operation === "extract-audio" ? {} : { requested: command.output }),
+      });
+
     switch (command.operation) {
-      case "crop":
+      case "crop": {
+        // Cropping changes the frame, so the video has to be re-encoded.
+        const profile = profileFor({ video: "reencode", audio: "reencode" });
+
         return {
           args: [
             "-i",
             inputPath,
             "-vf",
             `crop=${even(command.region.width)}:${even(command.region.height)}:${even(command.region.x)}:${even(command.region.y)}`,
-            "-c:v",
-            toVideoCodec(command.output?.videoCodec ?? "h264"),
-            ...(command.output?.audioCodec === "none"
-              ? ["-an"]
-              : ["-c:a", toAudioCodec(command.output?.audioCodec ?? "aac")]),
+            ...toCodecArgs(profile),
             outputPath,
           ],
-          mimeType: VIDEO_MIME_TYPES[command.output?.format ?? inferVideoFormat(command.fileName)],
+          mimeType: VIDEO_MIME_TYPES[profile.format],
         };
+      }
       case "extract-audio":
         return {
           args: [
@@ -135,39 +143,31 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
           ],
           mimeType: AUDIO_MIME_TYPES[command.format],
         };
-      case "adjust-volume":
+      case "adjust-volume": {
+        // The filter rewrites the samples, so audio is re-encoded; the picture is
+        // untouched and can be copied.
+        const profile = profileFor({ video: "copy", audio: "reencode" });
+
         return {
-          args: [
-            "-i",
-            inputPath,
-            "-af",
-            buildVolumeFilter(command.segments),
-            "-c:v",
-            "copy",
-            "-c:a",
-            "aac",
-            outputPath,
-          ],
-          mimeType: VIDEO_MIME_TYPES[inferVideoFormat(command.fileName)],
+          args: ["-i", inputPath, "-af", buildVolumeFilter(command.segments), ...toCodecArgs(profile), outputPath],
+          mimeType: VIDEO_MIME_TYPES[profile.format],
         };
-      case "mute":
+      }
+      case "mute": {
+        // Muting everything removes the stream; muting ranges keeps it and has to
+        // re-encode what is left.
+        const profile = profileFor({ video: "copy", audio: command.muteAll ? "drop" : "reencode" });
+
         return {
           args: command.muteAll
-            ? ["-i", inputPath, "-c:v", "copy", "-an", outputPath]
-            : [
-                "-i",
-                inputPath,
-                "-af",
-                buildMuteFilter(command.segments ?? []),
-                "-c:v",
-                "copy",
-                "-c:a",
-                "aac",
-                outputPath,
-              ],
-          mimeType: VIDEO_MIME_TYPES[inferVideoFormat(command.fileName)],
+            ? ["-i", inputPath, ...toCodecArgs(profile), outputPath]
+            : ["-i", inputPath, "-af", buildMuteFilter(command.segments ?? []), ...toCodecArgs(profile), outputPath],
+          mimeType: VIDEO_MIME_TYPES[profile.format],
         };
+      }
       case "add-audio":
+        // The mix is new audio, so it is encoded; the picture is copied.
+        const addAudioProfile = profileFor({ video: "copy", audio: "reencode" });
         if (command.tracks.length === 0 || command.tracks.length > 3) {
           throw new Error("Audio addition requires between one and three audio tracks.");
         }
@@ -192,16 +192,16 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
             "0:v?",
             "-map",
             "[mixed]",
-            "-c:v",
-            "copy",
-            "-c:a",
-            "aac",
+            ...toCodecArgs(addAudioProfile),
             "-shortest",
             outputPath,
           ],
-          mimeType: VIDEO_MIME_TYPES[inferVideoFormat(command.fileName)],
+          mimeType: VIDEO_MIME_TYPES[addAudioProfile.format],
         };
       case "watermark":
+        // The overlay is drawn into the picture, so video is re-encoded; audio is
+        // untouched and copied.
+        const watermarkProfile = profileFor({ video: "reencode", audio: "copy" });
         const imagePath = createTrackPath(command.layer.fileName, 0);
         extraPaths.push(imagePath);
         await this.runtime.writeFile(imagePath, sourceToFileLike(command.layer.image), { signal: command.job?.signal });
@@ -219,13 +219,10 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
             imagePath,
             "-filter_complex",
             `[1:v]${scale}${opacity}format=rgba[wm];[0:v][wm]overlay=${Math.max(0, command.layer.x)}:${Math.max(0, command.layer.y)}`,
-            "-c:v",
-            "libx264",
-            "-c:a",
-            "copy",
+            ...toCodecArgs(watermarkProfile),
             outputPath,
           ],
-          mimeType: VIDEO_MIME_TYPES[inferVideoFormat(command.fileName)],
+          mimeType: VIDEO_MIME_TYPES[watermarkProfile.format],
         };
     }
   }
@@ -276,8 +273,31 @@ function createTrackPath(fileName: string | undefined, index: number) {
 
 function createOutputPath(fileName: string | undefined, command: MediaEditEntity["command"]) {
   const baseName = sanitize(fileName ?? "media").replace(/\.[a-z0-9]+$/i, "");
-  const extension = command.operation === "extract-audio" ? command.format : inferVideoFormat(fileName);
+  const extension = command.operation === "extract-audio" ? command.format : resolveOutputContainer(command);
   return `${baseName}.${command.operation}.${extension}`;
+}
+
+/**
+ * The container the output is actually written to.
+ *
+ * Resolved once and used for the file name, the reported MIME type and the codec
+ * defaults alike. These used to be derived separately — the path from the input
+ * file's extension and the MIME type from `output.format` — so asking for a
+ * different container produced the original container wearing the requested
+ * label.
+ */
+function resolveOutputContainer(command: MediaEditEntity["command"]): VideoContainerFormat {
+  if (command.operation === "extract-audio") return inferVideoFormat(command.fileName);
+
+  return command.output?.format ?? inferVideoFormat(command.fileName);
+}
+
+/** Turns a resolved profile into the codec flags, including stream removal. */
+function toCodecArgs(profile: ResolvedMediaOutput): string[] {
+  return [
+    ...(profile.videoCodec === "none" ? ["-vn"] : ["-c:v", FFMPEG_VIDEO_ENCODERS[profile.videoCodec]]),
+    ...(profile.audioCodec === "none" ? ["-an"] : ["-c:a", FFMPEG_AUDIO_ENCODERS[profile.audioCodec]]),
+  ];
 }
 
 function inferVideoFormat(fileName: string | undefined): VideoContainerFormat {

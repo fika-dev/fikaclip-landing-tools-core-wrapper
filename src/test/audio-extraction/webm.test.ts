@@ -31,10 +31,10 @@ const PLAYABLE_FORMATS = [
  * the source's, so a webm source is not constrained by webm's
  * codec rules here — only by what the chosen audio format accepts.
  *
- * This is the only operation where WebM sources work. Every other operation
- * writes back into the source's container, so WebM's Opus/Vorbis-only rule
- * collides with the hardcoded AAC. Extraction writes an audio container the
- * caller chose, so that rule never applies to the output.
+ * Extraction is the one operation whose output container is chosen by the caller
+ * rather than inherited from the source, so WebM's Opus/Vorbis-only rule never
+ * applies to its output at all — a WebM source extracts to AAC in an MP4-family
+ * container without complaint.
  */
 describe("webm 소스에서 오디오 추출", () => {
   const measurements = new Map<string, SampleMeasurement>();
