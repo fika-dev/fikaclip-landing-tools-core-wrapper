@@ -89,6 +89,19 @@ describe("webm 로 포맷 변환", () => {
             mode: "transcode",
           },
         });
+
+        assert.deepEqual(outcome.ffmpegArgs.slice(0, 7), [
+          "-i",
+          PRIMARY_SOURCE.fileName,
+          "-map",
+          "0:v:0",
+          "-map",
+          "0:a:0?",
+          "-threads",
+        ]);
+        assert.ok(outcome.ffmpegArgs.includes("-deadline"));
+        assert.ok(outcome.ffmpegArgs.includes("-cpu-used"));
+        assert.ok(outcome.ffmpegArgs.includes("yuv420p"));
       });
     }
   });
@@ -138,6 +151,19 @@ describe("webm 로 포맷 변환", () => {
           mode: "transcode",
         },
       });
+    });
+
+    it("오디오 제거 요청은 음성 트랙을 매핑하지 않는다", async () => {
+      const outcome = await runFormatConversionCase({
+        sample: PRIMARY_SOURCE,
+        output: { format: TARGET, videoCodec: "vp9", audioCodec: "none" },
+      });
+
+      assert.equal(outcome.plan.output.audioCodec, "none");
+      assert.equal(outcome.profile.audioStreamCount, 0);
+      assert.equal(outcome.profile.audioCodec, undefined);
+      assert.ok(!outcome.ffmpegArgs.includes("0:a:0?"));
+      assert.ok(outcome.ffmpegArgs.includes("-an"));
     });
   });
 

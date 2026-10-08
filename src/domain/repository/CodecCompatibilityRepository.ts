@@ -102,7 +102,10 @@ export class CodecCompatibilityRepository implements Repository<ConvertVideoForm
       copyWarnings.push("Video codec matches the source, so the video stream will be copied without re-encoding.");
     }
 
-    if (inputAudioCodec && inputAudioCodec === output.audioCodec) {
+    if (!inputMetadata.audio) {
+      optimizedOutput.audioCodec = "none";
+      copyWarnings.push("The source has no audio stream, so the output will not include audio.");
+    } else if (inputAudioCodec && inputAudioCodec === output.audioCodec) {
       optimizedOutput.audioCodec = "copy";
       copyWarnings.push("Audio codec matches the source, so the audio stream will be copied without re-encoding.");
     }

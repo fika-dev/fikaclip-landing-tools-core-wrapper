@@ -34,6 +34,8 @@ export type FormatConversionCaseOutcome = {
   decode?: DecodeReport;
   /** The plan the conversion actually ran with: mode, resolved codecs, warnings. */
   plan: ConvertVideoFormatDetails;
+  /** Exact FFmpeg arguments used by the repository. */
+  ffmpegArgs: string[];
 };
 
 /**
@@ -86,6 +88,7 @@ export async function runFormatConversionCase(
       ...(frame === undefined ? {} : { frame }),
       ...(decode === undefined ? {} : { decode }),
       plan: result.details,
+      ffmpegArgs: [...useCase.runtime.lastArgs],
     };
   } finally {
     await workspace.cleanup();

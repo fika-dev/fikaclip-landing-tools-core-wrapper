@@ -108,13 +108,21 @@ export class FfmpegVideoFormatTranscodeRepository implements MediaTranscodeRepos
 }
 
 function buildConvertArgs(inputPath: string, outputPath: string, plan: ConvertVideoFormatPlan) {
-  const args = ["-i", inputPath, "-map", "0"];
+  const args = ["-i", inputPath, "-map", "0:v:0"];
+
+  if (plan.output.audioCodec !== "none") {
+    // Audio is optional because valid video inputs do not have to contain an
+    // audio stream. Mapping only the primary media streams also prevents WebM
+    // output from inheriting unsupported subtitles, cover art or data tracks.
+    args.push("-map", "0:a:0?");
+  }
 
   if (plan.mode === "remux") {
     args.push("-c", "copy");
   } else {
     args.push("-threads", "1");
     args.push("-c:v", toFfmpegVideoCodec(plan.output.videoCodec));
+    args.push(...createVideoEncodingArgs(plan));
 
     if (plan.output.audioCodec === "none") {
       args.push("-an");
@@ -128,6 +136,22 @@ function buildConvertArgs(inputPath: string, outputPath: string, plan: ConvertVi
   }
 
   args.push(outputPath);
+  return args;
+}
+
+function createVideoEncodingArgs(plan: ConvertVideoFormatPlan): string[] {
+  if (plan.output.videoCodec !== "vp8" && plan.output.videoCodec !== "vp9") {
+    return [];
+  }
+
+  const args = ["-deadline", "realtime", "-cpu-used", "8", "-pix_fmt", "yuv420p"];
+
+  // A requested bitrate remains authoritative. Constant-quality mode is the
+  // lower-overhead browser default only when the caller did not provide one.
+  if (plan.output.bitrate === undefined) {
+    args.push("-crf", plan.output.videoCodec === "vp9" ? "36" : "32", "-b:v", "0");
+  }
+
   return args;
 }
 
