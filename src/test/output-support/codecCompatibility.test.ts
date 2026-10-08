@@ -81,6 +81,16 @@ describe("포맷 변환 계획 수립", () => {
   });
 
   describe("입력 코덱이 목표와 같으면 재인코딩을 생략한다", () => {
+    it("입력에 오디오가 없으면 출력에서도 오디오를 제거한다", () => {
+      const result = plan(
+        { format: "webm", videoCodec: "vp9", audioCodec: "opus" },
+        { inputMetadata: { video: { codec: "h264" } } },
+      );
+
+      assert.equal(result.output.audioCodec, "none");
+      assert.ok(result.warnings.some((warning) => /no audio stream/.test(warning)));
+    });
+
     it("비디오 코덱이 일치하면 copy 로 바뀌고 경고가 남는다", () => {
       const result = plan(
         { format: "mp4", videoCodec: "h264", audioCodec: "aac" },
