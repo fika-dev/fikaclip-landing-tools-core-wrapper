@@ -1,4 +1,4 @@
-import type { MediaEditEntity, WatermarkVideoRepository } from "../../domain";
+import type { MediaEditEntity, WatermarkVideoRepository } from "../../../domain";
 import { FfmpegMediaEditRepository, type FfmpegMediaEditRepositoryConfig } from "./FfmpegMediaEditRepository";
 
 export class FfmpegWatermarkVideoRepository extends FfmpegMediaEditRepository implements WatermarkVideoRepository {

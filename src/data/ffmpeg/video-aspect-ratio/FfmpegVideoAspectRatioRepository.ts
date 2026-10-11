@@ -3,10 +3,10 @@ import type { FileData, ProgressEventCallback } from "@ffmpeg/ffmpeg";
 import {
   assertOutputAudioCodec,
   assertOutputVideoCodec,
-  type MediaCommandRuntime,
-  MediaRuntimeExhaustedError,
   type AudioCodec,
   type EditVideoAspectRatioEntity,
+  type MediaCommandRuntime,
+  MediaRuntimeExhaustedError,
   type MediaSource,
   type OutputAudioCodec,
   type OutputVideoCodec,
@@ -14,8 +14,8 @@ import {
   type VideoAspectRatioRepository,
   type VideoCodec,
   type VideoContainerFormat,
-} from "../../domain";
-import { readFfmpegBytes } from "../ffmpeg/FfmpegRuntime";
+} from "../../../domain";
+import { readFfmpegBytes } from "../runtime/FfmpegRuntime";
 
 const MIME_TYPE_BY_FORMAT: Record<VideoContainerFormat, string> = {
   mp4: "video/mp4",
@@ -81,7 +81,9 @@ export class FfmpegVideoAspectRatioRepository implements VideoAspectRatioReposit
         throw new Error(`ffmpeg aspect ratio transform failed with exit code ${exitCode}.`);
       }
 
-      const bytes = readFfmpegBytes(await this.runtime.readFile(outputPath, undefined, { signal: command.job?.signal }));
+      const bytes = readFfmpegBytes(
+        await this.runtime.readFile(outputPath, undefined, { signal: command.job?.signal }),
+      );
       const mimeType = MIME_TYPE_BY_FORMAT[output.format];
       const blob = new Blob([toBlobPart(bytes)], { type: mimeType });
       command.job?.onProgress?.({ jobId, phase: "done", ratio: 1 });
@@ -117,7 +119,6 @@ export class FfmpegVideoAspectRatioRepository implements VideoAspectRatioReposit
       }
     }
   }
-
 }
 
 function buildCenterPadFilter(aspectRatio: VideoAspectRatio) {
@@ -150,9 +151,7 @@ type SourceProfile = {
 
 type ResolvedAspectRatioOutput = SourceProfile;
 
-function requireCompleteOutput(
-  output: EditVideoAspectRatioEntity["command"]["output"],
-): ResolvedAspectRatioOutput {
+function requireCompleteOutput(output: EditVideoAspectRatioEntity["command"]["output"]): ResolvedAspectRatioOutput {
   if (!output?.format || !output.videoCodec || !output.audioCodec) {
     throw new Error("Video ratio editing requires an inspected source format and codec profile.");
   }

@@ -4,7 +4,16 @@
 
 - The library is split into `src/domain` and `src/data`.
 - `src/domain` contains `entity`, `repository`, and `usecase`.
-- `src/data` contains concrete repository implementations grouped by feature or capability.
+- Split `src/data` first by implementation boundary such as `browser`, `ffmpeg`, or `mediabunny`.
+- Treat each top-level implementation directory as an independent module.
+- An implementation module must not import another implementation module or choose between concrete engines.
+- Only the composition root may know multiple implementation modules and wire them together.
+- Keep one generic router repository in `src/domain`; do not add implementation-specific routers under `src/data`.
+- The domain router gathers environment context through injected providers, asks every candidate for an assessment, and selects the highest score.
+- A `UseCase` accepts ordinary and routable repositories in one ordered array. It executes ordinary entries in order and sends each contiguous routable group through the domain router.
+- Each data repository owns its support rules and score. It may describe only its own strengths and constraints.
+- A data implementation must not refer to another implementation by import, type, identifier, or string.
+- The domain router must not import concrete engines or contain engine-specific selection rules.
 - Do not reintroduce root-level `model` or `service` directories.
 
 ## Naming

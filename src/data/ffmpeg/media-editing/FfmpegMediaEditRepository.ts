@@ -1,24 +1,22 @@
-import type { FileData, ProgressEventCallback } from "@ffmpeg/ffmpeg";
+import type { ProgressEventCallback } from "@ffmpeg/ffmpeg";
 
 import {
   assertOutputAudioCodec,
-  assertOutputVideoCodec,
-  resolveMediaOutputProfile,
-  type MediaCommandRuntime,
-  type MediaOutputIntent,
-  type ResolvedMediaOutput,
-  MediaRuntimeExhaustedError,
   type AudioCodec,
   type AudioFormat,
+  type MediaCommandRuntime,
   type MediaEditEntity,
   type MediaEditRepository,
+  type MediaOutputIntent,
+  MediaRuntimeExhaustedError,
   type MediaSource,
   type OutputAudioCodec,
   type OutputVideoCodec,
-  type VideoCodec,
+  type ResolvedMediaOutput,
+  resolveMediaOutputProfile,
   type VideoContainerFormat,
-} from "../../domain";
-import { readFfmpegBytes } from "../ffmpeg/FfmpegRuntime";
+} from "../../../domain";
+import { readFfmpegBytes } from "../runtime/FfmpegRuntime";
 
 const VIDEO_MIME_TYPES: Record<VideoContainerFormat, string> = {
   mp4: "video/mp4",
@@ -98,7 +96,6 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
     }
   }
 
-
   private async createArgs(
     command: MediaEditEntity["command"],
     inputPath: string,
@@ -165,7 +162,7 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
           mimeType: VIDEO_MIME_TYPES[profile.format],
         };
       }
-      case "add-audio":
+      case "add-audio": {
         // The mix is new audio, so it is encoded; the picture is copied.
         const addAudioProfile = profileFor({ video: "copy", audio: "reencode" });
         if (command.tracks.length === 0 || command.tracks.length > 3) {
@@ -198,7 +195,8 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
           ],
           mimeType: VIDEO_MIME_TYPES[addAudioProfile.format],
         };
-      case "watermark":
+      }
+      case "watermark": {
         // The overlay is drawn into the picture, so video is re-encoded; audio is
         // untouched and copied.
         const watermarkProfile = profileFor({ video: "reencode", audio: "copy" });
@@ -224,6 +222,7 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
           ],
           mimeType: VIDEO_MIME_TYPES[watermarkProfile.format],
         };
+      }
     }
   }
 }
@@ -323,10 +322,6 @@ const FFMPEG_AUDIO_ENCODERS: Record<OutputAudioCodec | "copy", string> = {
   mp3: "libmp3lame",
   copy: "copy",
 };
-
-function toVideoCodec(codec: VideoCodec) {
-  return FFMPEG_VIDEO_ENCODERS[assertOutputVideoCodec(codec)];
-}
 
 function toAudioCodec(codec: Exclude<AudioCodec, "none">) {
   return FFMPEG_AUDIO_ENCODERS[assertOutputAudioCodec(codec)];

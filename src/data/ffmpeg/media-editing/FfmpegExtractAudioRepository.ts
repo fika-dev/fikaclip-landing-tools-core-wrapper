@@ -1,4 +1,4 @@
-import type { ExtractAudioRepository, MediaEditEntity } from "../../domain";
+import type { ExtractAudioRepository, MediaEditEntity } from "../../../domain";
 import { FfmpegMediaEditRepository, type FfmpegMediaEditRepositoryConfig } from "./FfmpegMediaEditRepository";
 
 export class FfmpegExtractAudioRepository extends FfmpegMediaEditRepository implements ExtractAudioRepository {

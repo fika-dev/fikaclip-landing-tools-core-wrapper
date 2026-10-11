@@ -1,12 +1,12 @@
 import {
-  normalizeAudioCodec,
-  normalizeContainerFormat,
-  normalizeVideoCodec,
   type InspectMediaEntity,
   type MediaMetadata,
   type MediaProbeRepository,
   type MediaSource,
-} from "../../domain";
+  normalizeAudioCodec,
+  normalizeContainerFormat,
+  normalizeVideoCodec,
+} from "../../../domain";
 
 export class BrowserMediaProbeRepository implements MediaProbeRepository {
   readonly id = "browser-media-probe";

@@ -3,19 +3,21 @@ import type { FileData, ProgressEventCallback } from "@ffmpeg/ffmpeg";
 import {
   assertOutputAudioCodec,
   assertOutputVideoCodec,
-  type MediaCommandRuntime,
-  MediaRuntimeExhaustedError,
   type AudioCodec,
   type ConvertVideoFormatEntity,
   type ConvertVideoFormatPlan,
+  type MediaCommandRuntime,
+  type MediaRoutingContext,
+  MediaRuntimeExhaustedError,
   type MediaSource,
-  type MediaTranscodeRepository,
   type OutputAudioCodec,
   type OutputVideoCodec,
+  type RoutableRepository,
+  type RouteAssessment,
   type VideoCodec,
   type VideoContainerFormat,
-} from "../../domain";
-import { readFfmpegBytes } from "../ffmpeg/FfmpegRuntime";
+} from "../../../domain";
+import { readFfmpegBytes } from "../runtime/FfmpegRuntime";
 
 const MIME_TYPE_BY_FORMAT: Record<VideoContainerFormat, string> = {
   mp4: "video/mp4",
@@ -28,13 +30,39 @@ export type FfmpegVideoFormatTranscodeRepositoryConfig = {
   runtime: MediaCommandRuntime;
 };
 
-export class FfmpegVideoFormatTranscodeRepository implements MediaTranscodeRepository {
+export class FfmpegVideoFormatTranscodeRepository implements RoutableRepository<ConvertVideoFormatEntity> {
   readonly id = "ffmpeg-video-format-transcode";
+  readonly engine = "ffmpeg";
 
   private readonly runtime: MediaCommandRuntime;
 
   constructor(config: FfmpegVideoFormatTranscodeRepositoryConfig) {
     this.runtime = config.runtime;
+  }
+
+  assess(entity: ConvertVideoFormatEntity, context: MediaRoutingContext): RouteAssessment {
+    const plan = entity.plan;
+    if (!plan) return { supported: false, score: 0, reasons: ["conversion-plan-required"] };
+
+    let score = plan.mode === "remux" ? 120 : 90;
+    const reasons = [plan.mode === "remux" ? "stream-copy" : "broad-codec-support"];
+
+    if (plan.output.format === "webm" && plan.mode === "transcode") {
+      score -= 70;
+      reasons.push("wasm-webm-memory-cost");
+    }
+
+    const browser = context.browser;
+    if (browser?.deviceMemoryGb !== undefined && browser.deviceMemoryGb <= 4) {
+      score -= 20;
+      reasons.push("memory-constrained-device");
+    }
+    if (browser?.isMobile || browser?.isLikelyInAppBrowser) {
+      score -= 10;
+      reasons.push("constrained-browser-runtime");
+    }
+
+    return { supported: true, score, reasons };
   }
 
   async execute(entity: ConvertVideoFormatEntity): Promise<ConvertVideoFormatEntity> {
@@ -80,7 +108,7 @@ export class FfmpegVideoFormatTranscodeRepository implements MediaTranscodeRepos
           fileName: outputPath,
           mimeType: blob.type,
           sizeBytes: blob.size,
-          details: plan,
+          details: { ...plan, engine: "ffmpeg" },
         },
       };
     } catch (error) {
@@ -104,7 +132,6 @@ export class FfmpegVideoFormatTranscodeRepository implements MediaTranscodeRepos
       }
     }
   }
-
 }
 
 function buildConvertArgs(inputPath: string, outputPath: string, plan: ConvertVideoFormatPlan) {

@@ -1,4 +1,4 @@
-import type { AdjustAudioVolumeRepository, MediaEditEntity } from "../../domain";
+import type { AdjustAudioVolumeRepository, MediaEditEntity } from "../../../domain";
 import { FfmpegMediaEditRepository, type FfmpegMediaEditRepositoryConfig } from "./FfmpegMediaEditRepository";
 
 export class FfmpegAdjustAudioVolumeRepository
