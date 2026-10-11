@@ -1,51 +1,38 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import {
-  MediaEngineUnsupportedError,
-  type MediaRoutingContext,
-  type Repository,
-  type RoutableRepository,
-  UseCase,
-} from "../../index";
+import type { MediaRoutingContext, Repository, RoutableImplementation } from "../../index";
+import { UseCase } from "../../index";
 
-type TestEntity = {
-  steps: string[];
-  selected?: string;
-};
+type TestEntity = { steps: string[] };
 
 describe("UseCase", () => {
-  it("일반 단계를 실행한 뒤 환경에 맞는 후보 하나를 선택한다", async () => {
-    const prepare = createStep("prepare");
-    const low = createCandidate("low", ({ browser }) => (browser?.isMobile ? 10 : 50));
-    const high = createCandidate("high", ({ browser }) => (browser?.isMobile ? 100 : 20));
-    const finish = createStep("finish");
-    const useCase = new UseCase<TestEntity>(
-      [prepare, low, high, finish],
-      [{ collect: () => ({ browser: createBrowserContext({ isMobile: true }) }) }],
-    );
+  it("공통 단계와 선택된 구현의 전체 단계만 실행한다", async () => {
+    const mobile = createImplementation("mobile", 100, [createStep("mobile-decode"), createStep("mobile-encode")]);
+    const desktop = createImplementation("desktop", 50, [createStep("desktop-decode"), createStep("desktop-encode")]);
+    const useCase = new UseCase<TestEntity>({
+      before: [createStep("probe"), createStep("plan")],
+      implementations: [mobile, desktop],
+      after: [createStep("validate")],
+      contextProviders: [{ collect: () => ({ browser: createBrowserContext({ isMobile: true }) }) }],
+    });
 
     const result = await useCase.execute({ steps: [] });
 
-    assert.deepEqual(result.steps, ["prepare", "high", "finish"]);
-    assert.equal(result.selected, "high");
-    assert.equal(low.executions, 0);
-    assert.equal(high.executions, 1);
+    assert.deepEqual(result.steps, ["probe", "plan", "mobile-decode", "mobile-encode", "validate"]);
   });
 
-  it("우선 후보가 실행 중 지원 불가를 반환하면 다음 후보를 실행한다", async () => {
-    const first = createCandidate("first", () => 100, true);
-    const second = createCandidate("second", () => 50);
-    const useCase = new UseCase<TestEntity>([first, second]);
+  it("전체 요구사항을 지원하지 않는 구현은 일부 repository도 실행하지 않는다", async () => {
+    const incomplete = createImplementation("incomplete", 1_000, [createStep("incomplete-only")], false);
+    const complete = createImplementation("complete", 10, [createStep("complete-one"), createStep("complete-two")]);
+    const useCase = new UseCase<TestEntity>({ implementations: [incomplete, complete] });
 
     const result = await useCase.execute({ steps: [] });
 
-    assert.deepEqual(result.steps, ["second"]);
-    assert.equal(first.executions, 1);
-    assert.equal(second.executions, 1);
+    assert.deepEqual(result.steps, ["complete-one", "complete-two"]);
   });
 
-  it("선택 후보가 없으면 기존처럼 모든 repository를 순서대로 실행한다", async () => {
+  it("구현 후보가 없는 기존 유즈케이스는 repository를 순서대로 실행한다", async () => {
     const useCase = new UseCase<TestEntity>([createStep("one"), createStep("two")]);
 
     const result = await useCase.execute({ steps: [] });
@@ -54,27 +41,22 @@ describe("UseCase", () => {
   });
 });
 
-function createStep(name: string): Repository<TestEntity> {
+function createImplementation(
+  name: string,
+  score: number,
+  repositories: readonly Repository<TestEntity>[],
+  supported = true,
+): RoutableImplementation<TestEntity> {
   return {
-    id: name,
-    execute: async (entity) => ({ ...entity, steps: [...entity.steps, name] }),
+    id: Symbol(name),
+    name,
+    repositories,
+    assess: () => ({ supported, score }),
   };
 }
 
-function createCandidate(name: string, score: (context: MediaRoutingContext) => number, fail = false) {
-  const candidate: RoutableRepository<TestEntity> & { executions: number } = {
-    id: name,
-    engine: name,
-    executions: 0,
-    assess: (_entity, context) => ({ supported: true, score: score(context) }),
-    execute: async (entity) => {
-      candidate.executions += 1;
-      if (fail) throw new MediaEngineUnsupportedError(name, "unsupported");
-      return { ...entity, selected: name, steps: [...entity.steps, name] };
-    },
-  };
-
-  return candidate;
+function createStep(name: string): Repository<TestEntity> {
+  return { id: name, execute: async (entity) => ({ steps: [...entity.steps, name] }) };
 }
 
 function createBrowserContext(overrides: Partial<MediaRoutingContext["browser"]> = {}) {
@@ -83,10 +65,7 @@ function createBrowserContext(overrides: Partial<MediaRoutingContext["browser"]>
     isLikelyInAppBrowser: false,
     isStorageEstimateSupported: false,
     isDeviceMemorySupported: false,
-    webCodecs: {
-      isVideoEncoderSupported: true,
-      isAudioEncoderSupported: true,
-    },
+    webCodecs: { isVideoEncoderSupported: true, isAudioEncoderSupported: true },
     ...overrides,
   };
 }

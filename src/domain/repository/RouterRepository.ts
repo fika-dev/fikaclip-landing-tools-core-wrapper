@@ -16,8 +16,10 @@ export interface RouteContextProvider<Entity> {
   collect(entity: Entity): Promise<Partial<MediaRoutingContext>> | Partial<MediaRoutingContext>;
 }
 
-export interface RoutableRepository<Entity> extends Repository<Entity> {
-  readonly engine: string;
+export interface RoutableImplementation<Entity> {
+  readonly id: symbol;
+  readonly name: string;
+  readonly repositories: readonly Repository<Entity>[];
   assess(entity: Entity, context: MediaRoutingContext): Promise<RouteAssessment> | RouteAssessment;
 }
 
@@ -26,25 +28,29 @@ export class RouterRepository<Entity> implements Repository<Entity> {
 
   constructor(
     private readonly contextProviders: readonly RouteContextProvider<Entity>[],
-    private readonly candidates: readonly RoutableRepository<Entity>[],
+    private readonly candidates: readonly RoutableImplementation<Entity>[],
   ) {}
 
   async execute(entity: Entity): Promise<Entity> {
     const context = await this.collectContext(entity);
     const assessed = await Promise.all(
-      this.candidates.map(async (repository, order) => ({
-        repository,
+      this.candidates.map(async (implementation, order) => ({
+        implementation,
         order,
-        assessment: await repository.assess(entity, context),
+        assessment: await implementation.assess(entity, context),
       })),
     );
     const candidates = assessed
       .filter(({ assessment }) => assessment.supported)
       .sort((left, right) => right.assessment.score - left.assessment.score || left.order - right.order);
 
-    for (const { repository } of candidates) {
+    for (const { implementation } of candidates) {
       try {
-        return await repository.execute(entity);
+        let currentEntity = entity;
+        for (const repository of implementation.repositories) {
+          currentEntity = await repository.execute(currentEntity);
+        }
+        return currentEntity;
       } catch (error) {
         if (!(error instanceof MediaEngineUnsupportedError)) throw error;
       }

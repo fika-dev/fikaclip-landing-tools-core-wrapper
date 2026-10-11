@@ -11,8 +11,8 @@ import {
   BrowserNavigatorCapabilityRepository,
   BrowserRouteContextProvider,
 } from "./browser";
-import { FfmpegRuntime, FfmpegVideoFormatTranscodeRepository } from "./ffmpeg";
-import { MediabunnyVideoFormatTranscodeRepository } from "./mediabunny";
+import { FfmpegRuntime, FfmpegVideoFormatImplementation } from "./ffmpeg";
+import { MediabunnyVideoFormatImplementation } from "./mediabunny";
 
 export type BrowserVideoEditorRuntimeConfig =
   | {
@@ -49,14 +49,11 @@ export function createBrowserVideoEditorRepositories(
   const runtime = new FfmpegRuntime(config);
   const mediaProbeRepository = new BrowserMediaProbeRepository();
   const capabilityRepository = new BrowserNavigatorCapabilityRepository();
-  const convertVideoFormatUseCase = new UseCase<ConvertVideoFormatEntity>(
-    [
-      new CreateVideoFormatConversionPlanRepository(mediaProbeRepository, new CodecCompatibilityRepository()),
-      new MediabunnyVideoFormatTranscodeRepository(),
-      new FfmpegVideoFormatTranscodeRepository({ runtime }),
-    ],
-    [new BrowserRouteContextProvider(capabilityRepository)],
-  );
+  const convertVideoFormatUseCase = new UseCase<ConvertVideoFormatEntity>({
+    before: [new CreateVideoFormatConversionPlanRepository(mediaProbeRepository, new CodecCompatibilityRepository())],
+    implementations: [new MediabunnyVideoFormatImplementation(), new FfmpegVideoFormatImplementation({ runtime })],
+    contextProviders: [new BrowserRouteContextProvider(capabilityRepository)],
+  });
 
   return {
     dispose: () => runtime.terminate(),

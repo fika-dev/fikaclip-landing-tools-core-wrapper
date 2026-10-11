@@ -7,13 +7,10 @@ import {
   type ConvertVideoFormatEntity,
   type ConvertVideoFormatPlan,
   type MediaCommandRuntime,
-  type MediaRoutingContext,
   MediaRuntimeExhaustedError,
   type MediaSource,
   type OutputAudioCodec,
   type OutputVideoCodec,
-  type RoutableRepository,
-  type RouteAssessment,
   type VideoCodec,
   type VideoContainerFormat,
 } from "../../../domain";
@@ -30,39 +27,13 @@ export type FfmpegVideoFormatTranscodeRepositoryConfig = {
   runtime: MediaCommandRuntime;
 };
 
-export class FfmpegVideoFormatTranscodeRepository implements RoutableRepository<ConvertVideoFormatEntity> {
+export class FfmpegVideoFormatTranscodeRepository {
   readonly id = "ffmpeg-video-format-transcode";
-  readonly engine = "ffmpeg";
 
   private readonly runtime: MediaCommandRuntime;
 
   constructor(config: FfmpegVideoFormatTranscodeRepositoryConfig) {
     this.runtime = config.runtime;
-  }
-
-  assess(entity: ConvertVideoFormatEntity, context: MediaRoutingContext): RouteAssessment {
-    const plan = entity.plan;
-    if (!plan) return { supported: false, score: 0, reasons: ["conversion-plan-required"] };
-
-    let score = plan.mode === "remux" ? 120 : 90;
-    const reasons = [plan.mode === "remux" ? "stream-copy" : "broad-codec-support"];
-
-    if (plan.output.format === "webm" && plan.mode === "transcode") {
-      score -= 70;
-      reasons.push("wasm-webm-memory-cost");
-    }
-
-    const browser = context.browser;
-    if (browser?.deviceMemoryGb !== undefined && browser.deviceMemoryGb <= 4) {
-      score -= 20;
-      reasons.push("memory-constrained-device");
-    }
-    if (browser?.isMobile || browser?.isLikelyInAppBrowser) {
-      score -= 10;
-      reasons.push("constrained-browser-runtime");
-    }
-
-    return { supported: true, score, reasons };
   }
 
   async execute(entity: ConvertVideoFormatEntity): Promise<ConvertVideoFormatEntity> {

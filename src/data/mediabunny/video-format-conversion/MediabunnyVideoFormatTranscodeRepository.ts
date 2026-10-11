@@ -12,51 +12,10 @@ import {
   WebMOutputFormat,
 } from "mediabunny";
 
-import {
-  type ConvertVideoFormatEntity,
-  MediaEngineUnsupportedError,
-  type MediaRoutingContext,
-  type MediaSource,
-  type RoutableRepository,
-  type RouteAssessment,
-} from "../../../domain";
+import { type ConvertVideoFormatEntity, MediaEngineUnsupportedError, type MediaSource } from "../../../domain";
 
-export class MediabunnyVideoFormatTranscodeRepository implements RoutableRepository<ConvertVideoFormatEntity> {
+export class MediabunnyVideoFormatTranscodeRepository {
   readonly id = "mediabunny-video-format-transcode";
-  readonly engine = "mediabunny";
-
-  assess(entity: ConvertVideoFormatEntity, context: MediaRoutingContext): RouteAssessment {
-    const plan = entity.plan;
-
-    if (!plan || plan.output.format !== "webm") {
-      return { supported: false, score: 0, reasons: ["webm-output-required"] };
-    }
-
-    const needsVideoEncoder = plan.output.videoCodec !== "copy";
-    const needsAudioEncoder = plan.output.audioCodec !== "copy" && plan.output.audioCodec !== "none";
-    const browser = context.browser;
-    const supportsVideo = !needsVideoEncoder || browser?.webCodecs.isVideoEncoderSupported === true;
-    const supportsAudio = !needsAudioEncoder || browser?.webCodecs.isAudioEncoderSupported === true;
-
-    if (!supportsVideo || !supportsAudio) {
-      return { supported: false, score: 0, reasons: ["required-webcodecs-encoder-unavailable"] };
-    }
-
-    let score = plan.mode === "remux" ? 110 : 130;
-    const reasons = [plan.mode === "remux" ? "native-remux" : "native-webm-encoding"];
-
-    if (browser?.deviceMemoryGb !== undefined && browser.deviceMemoryGb <= 4) {
-      score += 20;
-      reasons.push("memory-constrained-device");
-    }
-
-    if (browser?.isMobile) {
-      score += 10;
-      reasons.push("mobile-device");
-    }
-
-    return { supported: true, score, reasons };
-  }
 
   async execute(entity: ConvertVideoFormatEntity): Promise<ConvertVideoFormatEntity> {
     const { command, jobId, plan } = entity;
