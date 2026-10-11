@@ -16,14 +16,13 @@ const PINNED_SAMPLE = MATRIX.get("h264", "aac");
 /**
  * The audio formats that can be extracted, and the codec each one implies.
  *
- * The repository picks the codec from the format: MP3 for `.mp3`, Opus for
- * `.ogg`, AAC for anything else. `.wav` is therefore broken by construction and
- * is recorded separately below.
+ * The repository picks a codec that matches each output container.
  */
 const PLAYABLE_FORMATS = [
   { format: "mp3", audioCodec: "mp3", mimeType: "audio/mpeg", container: "mp3" },
   { format: "m4a", audioCodec: "aac", mimeType: "audio/mp4", container: "m4a" },
   { format: "ogg", audioCodec: "opus", mimeType: "audio/ogg", container: "ogg" },
+  { format: "wav", audioCodec: "pcm_s16le", mimeType: "audio/wav", container: "wav" },
 ] as const;
 
 /**
@@ -75,31 +74,6 @@ describe("mp4 소스에서 오디오 추출", () => {
     }
   });
 
-  describe("현재 동작 기록: wav 추출물은 재생할 수 없다", () => {
-    it("wav 로 추출하면 PCM 이 아니라 AAC 가 담겨 디코딩이 깨진다", async () => {
-      // `defaultAudioCodec` returns AAC for every format except mp3 and ogg, so
-      // `.wav` gets AAC. The WAV muxer accepts it — WAV stores a codec tag rather
-      // than a fixed format — and the file probes as healthy. Only a full decode
-      // shows the truth. There is no correct option either: `AudioCodec` has no
-      // PCM member, so this format cannot currently be asked for properly.
-      const outcome = await extractSampleAudio({ sample: PINNED_SAMPLE, format: "wav", decodeCheck: true });
-
-      assert.equal(outcome.profile.container, "wav");
-      assert.equal(outcome.profile.audioCodec, "aac", "AAC inside a WAV container is the defect");
-      assert.equal(outcome.resultMimeType, "audio/wav");
-
-      // The probe is happy; the decoder is not.
-      assert.ok(outcome.decode, "the extraction case must run a full decode check");
-      assert.notEqual(outcome.decode.exitCode, 0, "decoding must fail");
-      assert.ok(
-        outcome.decode.errorLines.length > 0,
-        "the decoder must report errors, which is what a probe alone cannot show",
-      );
-      // And nothing measurable comes out of it.
-      assert.equal(outcome.loudness.meanVolumeDb, null, "no loudness can be measured from an undecodable file");
-    });
-  });
-
   describe("오디오 코덱을 직접 지정", () => {
     it("m4a 에 aac 를 명시해도 기본값과 같은 결과가 나온다", async () => {
       const outcome = await extractSampleAudio({
@@ -116,7 +90,7 @@ describe("mp4 소스에서 오디오 추출", () => {
       });
     });
 
-    it("m4a 는 mp3 를 거부한다 — 확장자가 먹서를 가른다", async () => {
+    it("m4a 와 mp3 조합을 실행 전에 거부한다", async () => {
       // `.m4a` selects ffmpeg's `ipod` muxer, a restricted ISO BMFF profile with
       // a codec whitelist, while `.mp4` selects the general `mp4` muxer which
       // does carry MP3. Same base container, different muxer, different codec
@@ -126,8 +100,7 @@ describe("mp4 소스에서 오디오 추출", () => {
         () => extractSampleAudio({ sample: PINNED_SAMPLE, format: "m4a", audioCodec: "mp3" }),
         (error: unknown) => {
           assert.ok(error instanceof Error);
-          assert.match(error.message, /ffmpeg extract-audio failed with exit code \d+\./);
-          assert.match(error.message, /codec not currently supported in container/);
+          assert.match(error.message, /m4a extraction requires aac audio, but mp3 was requested/);
           return true;
         },
       );

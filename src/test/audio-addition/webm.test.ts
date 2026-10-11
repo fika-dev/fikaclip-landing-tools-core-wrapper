@@ -76,8 +76,8 @@ describe("webm 컨테이너에 오디오 추가", () => {
     }
   });
 
-  describe("현재 동작 기록: 원본 오디오는 믹스되지 않고 교체된다", () => {
-    it("볼륨 0 비프음을 넣으면 출력이 무음이 된다", async () => {
+  describe("원본 오디오와 추가 오디오를 함께 믹스한다", () => {
+    it("추가 비프음의 볼륨이 0이어도 원본 소리는 유지된다", async () => {
       // Structural proof rather than spectral analysis: if the source audio were
       // mixed in, muting only the inserted track would leave it audible. The
       // add-audio filter graph builds `amix` from the injected tracks alone and
@@ -93,7 +93,7 @@ describe("webm 컨테이너에 오디오 추가", () => {
         mimeType: EXPECTED_MIME_TYPE,
         videoCodec: toProbeVideoCodecName(PINNED_SAMPLE.videoCodec),
         audioCodec: "opus",
-        audible: false,
+        audible: true,
       });
     });
   });

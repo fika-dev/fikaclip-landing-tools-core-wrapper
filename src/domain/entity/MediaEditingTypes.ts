@@ -2,6 +2,7 @@ import type { AudioCodec, MediaSource, VideoCodec, VideoContainerFormat, VideoEx
 import type { MediaToolJobOptions } from "./MediaToolTypes";
 
 export type AudioFormat = "mp3" | "m4a" | "wav" | "ogg";
+export type AudioExtractionCodec = Exclude<AudioCodec, "none" | "copy"> | "pcm";
 
 export type AudioVolumeSegment = {
   startSeconds: number;
@@ -67,7 +68,7 @@ export type MediaEditCommand =
       source: MediaSource;
       fileName?: string;
       format: AudioFormat;
-      audioCodec?: Exclude<AudioCodec, "none" | "copy">;
+      audioCodec?: AudioExtractionCodec;
       audioTrackIndex?: number;
       job?: MediaToolJobOptions;
     }
@@ -93,6 +94,7 @@ export type MediaEditCommand =
       source: MediaSource;
       fileName?: string;
       tracks: AudioTrack[];
+      includeOriginalAudio?: boolean;
       output?: MediaEditOutput;
       job?: MediaToolJobOptions;
     }

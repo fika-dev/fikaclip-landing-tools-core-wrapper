@@ -23,7 +23,7 @@ export type RunAspectRatioCaseOptions = {
    * The repository requires a complete output profile and rejects a `copy`
    * video codec, because padding has to re-encode the frame.
    */
-  output: {
+  output?: {
     format: VideoContainerFormat;
     videoCodec: OutputVideoCodec;
     /** `none` drops the audio stream with `-an`. */
@@ -58,13 +58,13 @@ export async function runAspectRatioCase(options: RunAspectRatioCaseOptions): Pr
     const source: MediaSource = { type: "blob", blob: new Blob([new Uint8Array(videoBytes)]) };
 
     const result = await useCase
-      .transform({ source, fileName: sample.fileName, aspectRatio, output })
+      .transform({ source, fileName: sample.fileName, aspectRatio, ...(output ? { output } : {}) })
       .catch((error: unknown) => {
         throw new Error(
           [
             error instanceof Error ? error.message : String(error),
             `--- sample ---\n${sample.fileName} (${sample.videoCodec}/${sample.audioCodec})`,
-            `--- requested ---\n${aspectRatio} → ${output.format}/${output.videoCodec}/${output.audioCodec}`,
+            `--- requested ---\n${aspectRatio} → ${output ? `${output.format}/${output.videoCodec}/${output.audioCodec}` : "defaults"}`,
             `--- ffmpeg argv ---\nffmpeg ${useCase.runtime.lastArgs.join(" ")}`,
             `--- ffmpeg stderr ---\n${useCase.runtime.lastStderr.trim()}`,
           ].join("\n"),

@@ -8,7 +8,7 @@ import { assertMedia, assertUseCaseExitCodeMinusOne, probeMedia, runCommand } fr
 
 export async function testVideoAspectRatio() {
   await testBrowserMediaProbeWaitsForUsableMetadata();
-  await testBrowserWasmFfprobeFailureDoesNotInvokeFfprobe();
+  await testBrowserWasmUsesDefaultOutputWithoutFfprobe();
 
   const fixture = await createSyntheticFixture();
   const outputPath = path.join(fixture.workDir, "aspect-ratio.mp4");
@@ -80,7 +80,7 @@ async function testBrowserMediaProbeWaitsForUsableMetadata() {
   }
 }
 
-async function testBrowserWasmFfprobeFailureDoesNotInvokeFfprobe() {
+async function testBrowserWasmUsesDefaultOutputWithoutFfprobe() {
   const runtime = new BrowserWasmFailureRuntime();
   const repository = new FfmpegVideoAspectRatioRepository({
     coreURL: "https://example.invalid/ffmpeg-core.js",
@@ -93,10 +93,8 @@ async function testBrowserWasmFfprobeFailureDoesNotInvokeFfprobe() {
     aspectRatio: "9:16",
   };
 
-  await assert.rejects(
-    () => repository.execute({ command, jobId: "browser-wasm-ffprobe-failure" }),
-    /requires an inspected source format and codec profile/,
-  );
+  const defaultResult = await repository.execute({ command, jobId: "browser-wasm-default-profile" });
+  assert.equal(defaultResult.result?.blob.size, 1);
   assert.equal(runtime.ffprobeCalls, 0);
 
   const result = await repository.execute({

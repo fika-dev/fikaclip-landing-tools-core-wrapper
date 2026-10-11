@@ -75,6 +75,8 @@ async function testAudioAdditionExitCodeMinusOne() {
 }
 
 class ExitCodeFailureRuntime {
+  execCalls = 0;
+
   onProgress() {}
 
   offProgress() {}
@@ -88,7 +90,8 @@ class ExitCodeFailureRuntime {
   async deleteFile() {}
 
   async exec() {
-    return -1;
+    this.execCalls += 1;
+    return this.execCalls <= 2 ? 0 : -1;
   }
 
   terminate() {}

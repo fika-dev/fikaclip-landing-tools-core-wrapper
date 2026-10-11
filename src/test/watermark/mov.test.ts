@@ -134,29 +134,25 @@ describe("mov 컨테이너 워터마크", () => {
       assertAudioUnchanged(outcome, source);
     });
 
-    describe("현재 동작 기록: 투명도가 적용되지 않는다", () => {
-      it("opacity 0.5 를 줘도 불투명하게 그려진다", async () => {
+    describe("워터마크 투명도", () => {
+      it("opacity 0.5 를 주면 배경과 절반씩 혼합된다", async () => {
         // The watermark image is RGB with no alpha channel, and the filter chain
         // runs `colorchannelmixer=aa=<opacity>` *before* `format=rgba`. Scaling a
         // channel that does not exist yet does nothing, and `format=rgba` then
         // adds a fully opaque alpha. Swapping the two stages fixes it: with
         // `format=rgba` first, this pixel becomes the expected blend.
-        const frame = requireFrame(
-          await watermarkSample({ sample: PINNED_SAMPLE, opacity: 0.5, captureFrame: true }),
-        );
+        const frame = requireFrame(await watermarkSample({ sample: PINNED_SAMPLE, opacity: 0.5, captureFrame: true }));
         const expectedBlend = blendRgb(source.frame.at(20, 20), WATERMARK_IMAGE_RGB, 0.5);
 
-        assertPixelColor(frame.at(20, 20), WATERMARK_IMAGE_RGB, "opacity is currently ignored");
-        assertPixelNotColor(frame.at(20, 20), expectedBlend, "the 50% blend that should have been drawn");
+        assertPixelColor(frame.at(20, 20), expectedBlend, "the watermark should be blended at 50%");
       });
 
-      it("opacity 0 을 줘도 워터마크가 그대로 보인다", async () => {
+      it("opacity 0 을 주면 원본 프레임이 유지된다", async () => {
         // The clearest form of the defect: fully transparent should leave the
         // frame untouched, and instead it paints the watermark at full strength.
         const frame = requireFrame(await watermarkSample({ sample: PINNED_SAMPLE, opacity: 0, captureFrame: true }));
 
-        assertPixelColor(frame.at(20, 20), WATERMARK_IMAGE_RGB, "a fully transparent watermark is still painted");
-        assertPixelNotColor(frame.at(20, 20), source.frame.at(20, 20), "the frame should have been left untouched");
+        assertPixelColor(frame.at(20, 20), source.frame.at(20, 20), "the frame should be left untouched");
       });
     });
   });

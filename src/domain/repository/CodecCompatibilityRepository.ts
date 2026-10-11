@@ -1,5 +1,7 @@
 import {
   defaultOutputCodecsFor,
+  isOutputAudioCodec,
+  isOutputVideoCodec,
   type AudioCodec,
   type ConvertVideoFormatEntity,
   type ConvertVideoFormatOutput,
@@ -9,6 +11,8 @@ import {
   type VideoCodec,
   type VideoContainerFormat,
   type VideoFormatConversionMode,
+  listOutputAudioCodecs,
+  listOutputVideoCodecs,
 } from "../entity";
 import { normalizeAudioCodec, normalizeVideoCodec } from "./MediaFormatNormalization";
 import { assertSupportedOutputRequest } from "./MediaOutputValidation";
@@ -20,11 +24,18 @@ export class CodecCompatibilityRepository implements Repository<ConvertVideoForm
   execute(entity: ConvertVideoFormatEntity): ConvertVideoFormatEntity {
     const { command, inputMetadata } = entity;
 
+    if (
+      command.output.bitrate !== undefined &&
+      (!Number.isFinite(command.output.bitrate) || command.output.bitrate <= 0)
+    ) {
+      throw new Error(`Video bitrate must be a positive finite number, but ${command.output.bitrate} was requested.`);
+    }
+
     // Fail here rather than inside FFmpeg: an unsupported pairing is a request
     // error, not a transcode failure.
     assertSupportedOutputRequest(command.output);
 
-    const requestedMode = this.resolveConversionMode(command.mode, command.output);
+    const requestedMode = this.resolveConversionMode(command.mode, command.output, inputMetadata);
     const requestedOutput = this.resolveOutput(command.output, requestedMode);
     const { mode, output, warnings } = this.optimizePlanForInput(
       command.output,
@@ -47,12 +58,24 @@ export class CodecCompatibilityRepository implements Repository<ConvertVideoForm
   private resolveConversionMode(
     mode: ConvertVideoFormatEntity["command"]["mode"],
     output: ConvertVideoFormatOutput,
+    inputMetadata: MediaMetadata | undefined,
   ): Exclude<VideoFormatConversionMode, "auto"> {
     if (mode && mode !== "auto") {
       return mode;
     }
 
-    return output.videoCodec || output.audioCodec || output.bitrate ? "transcode" : "remux";
+    if (output.videoCodec || output.audioCodec || output.bitrate) return "transcode";
+
+    const inputVideoCodec = normalizeVideoCodec(inputMetadata?.video?.codec);
+    const inputAudioCodec = normalizeAudioCodec(inputMetadata?.audio?.codec);
+    const canRemuxVideo = Boolean(
+      isOutputVideoCodec(inputVideoCodec) && listOutputVideoCodecs(output.format).includes(inputVideoCodec),
+    );
+    const canRemuxAudio =
+      !inputMetadata?.audio ||
+      Boolean(isOutputAudioCodec(inputAudioCodec) && listOutputAudioCodecs(output.format).includes(inputAudioCodec));
+
+    return canRemuxVideo && canRemuxAudio ? "remux" : "transcode";
   }
 
   private resolveOutput(
@@ -88,6 +111,7 @@ export class CodecCompatibilityRepository implements Repository<ConvertVideoForm
     }
 
     if (mode === "remux") {
+      this.assertRemuxCompatibility(requestedOutput.format, inputMetadata);
       const warnings = this.createWarnings(requestedOutput, mode);
       return { mode, output, warnings };
     }
@@ -119,6 +143,18 @@ export class CodecCompatibilityRepository implements Repository<ConvertVideoForm
       output: optimizedOutput,
       warnings,
     };
+  }
+
+  private assertRemuxCompatibility(format: VideoContainerFormat, inputMetadata: MediaMetadata) {
+    const videoCodec = normalizeVideoCodec(inputMetadata.video?.codec);
+    const audioCodec = normalizeAudioCodec(inputMetadata.audio?.codec);
+
+    if (isOutputVideoCodec(videoCodec) && !listOutputVideoCodecs(format).includes(videoCodec)) {
+      throw new Error(`${format} cannot remux ${videoCodec} video. Select transcode mode instead.`);
+    }
+    if (isOutputAudioCodec(audioCodec) && !listOutputAudioCodecs(format).includes(audioCodec)) {
+      throw new Error(`${format} cannot remux ${audioCodec} audio. Select transcode mode instead.`);
+    }
   }
 
   private createWarnings(output: ConvertVideoFormatOutput, mode: Exclude<VideoFormatConversionMode, "auto">) {

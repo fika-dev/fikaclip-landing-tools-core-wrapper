@@ -68,12 +68,8 @@ describe("mp4 컨테이너에 오디오 추가", () => {
     }
   });
 
-  describe("현재 동작 기록: 원본 오디오는 믹스되지 않고 교체된다", () => {
-    it("볼륨 0 비프음을 넣으면 출력이 무음이 된다", async () => {
-      // Structural proof rather than spectral analysis: if the source audio were
-      // mixed in, muting only the inserted track would leave it audible. The
-      // add-audio filter graph builds `amix` from the injected tracks alone and
-      // maps `0:v?` plus `[mixed]`, so the source audio never reaches the output.
+  describe("원본 오디오와 추가 오디오를 함께 믹스한다", () => {
+    it("추가 비프음의 볼륨이 0이어도 원본 소리는 유지된다", async () => {
       const outcome = await insertBeepIntoSample({
         sample: PINNED_SAMPLE,
         beepCodec: PINNED_BEEP_CODEC,
@@ -85,7 +81,24 @@ describe("mp4 컨테이너에 오디오 추가", () => {
         mimeType: EXPECTED_MIME_TYPE,
         videoCodec: toProbeVideoCodecName(PINNED_SAMPLE.videoCodec),
         audioCodec: "aac",
-        audible: false,
+        audible: true,
+      });
+    });
+
+    it("추가 음원이 영상보다 짧아도 결과 영상 길이를 유지한다", async () => {
+      const outcome = await insertBeepIntoSample({
+        sample: PINNED_SAMPLE,
+        beepCodec: PINNED_BEEP_CODEC,
+        beepSeconds: 0.2,
+      });
+
+      assertMediaOutput(outcome, {
+        container: "mp4",
+        mimeType: EXPECTED_MIME_TYPE,
+        videoCodec: toProbeVideoCodecName(PINNED_SAMPLE.videoCodec),
+        audioCodec: "aac",
+        audible: true,
+        durationSeconds: 1,
       });
     });
   });

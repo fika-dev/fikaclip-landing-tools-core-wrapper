@@ -23,9 +23,16 @@ describe("영상 포맷 구현 선택", () => {
 
     assert.equal(result.result?.details.engine, "ffmpeg");
   });
+
+  it("브라우저가 요청한 VP9 설정을 거부하면 WebM 구현을 선택하지 않는다", async () => {
+    installSupportedWebCodecs({ video: false });
+
+    await assert.rejects(() => createRouter(false).execute(createEntity("webm")), /No repository supports/);
+  });
 });
 
-function createRouter() {
+function createRouter(installCodecs = true) {
+  if (installCodecs) installSupportedWebCodecs();
   const mediabunny = new MediabunnyVideoFormatImplementation();
   const ffmpeg = new FfmpegVideoFormatImplementation({ runtime: createRuntimeStub() });
 
@@ -45,6 +52,25 @@ function createRouter() {
     ],
     [withMarkerRepository(mediabunny), withMarkerRepository(ffmpeg)],
   );
+}
+
+function installSupportedWebCodecs(support: { video?: boolean; audio?: boolean } = {}) {
+  Object.defineProperty(globalThis, "VideoEncoder", {
+    configurable: true,
+    value: class {
+      static isConfigSupported(config: VideoEncoderConfig) {
+        return Promise.resolve({ config, supported: support.video ?? true });
+      }
+    },
+  });
+  Object.defineProperty(globalThis, "AudioEncoder", {
+    configurable: true,
+    value: class {
+      static isConfigSupported(config: AudioEncoderConfig) {
+        return Promise.resolve({ config, supported: support.audio ?? true });
+      }
+    },
+  });
 }
 
 function withMarkerRepository(
