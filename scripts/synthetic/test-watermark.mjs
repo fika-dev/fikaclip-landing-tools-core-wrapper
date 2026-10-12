@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 
-import { FfmpegWatermarkVideoRepository, UseCase } from "../../dist/index.js";
+import { FfmpegWatermarkVideoRepository, MediaPipelineUseCase } from "../../dist/index.js";
 
 import { createSyntheticFixture } from "./createSyntheticFixture.mjs";
 import { assertMedia, assertUseCaseExitCodeMinusOne, probeMedia, runCommand } from "./utils.mjs";
@@ -31,7 +31,10 @@ export async function testWatermark() {
       label: "watermark use case",
       command: { sourcePath: fixture.inputPath },
     });
-    const useCase = new UseCase([new WatermarkProbeRepository(), new WatermarkRepository(outputPath, watermarkPath)]);
+    const useCase = new MediaPipelineUseCase([
+      new WatermarkProbeRepository(),
+      new WatermarkRepository(outputPath, watermarkPath),
+    ]);
     const entity = await useCase.execute({ command: { sourcePath: fixture.inputPath }, jobId: "watermark" });
     await assertMedia(entity.result.path, {
       label: "watermark use case",

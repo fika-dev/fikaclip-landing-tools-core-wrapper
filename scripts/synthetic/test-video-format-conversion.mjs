@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { UseCase } from "../../dist/index.js";
+import { MediaPipelineUseCase } from "../../dist/index.js";
 
 import { createSyntheticFixture } from "./createSyntheticFixture.mjs";
 import { assertMedia, assertUseCaseExitCodeMinusOne, probeMedia, runCommand } from "./utils.mjs";
@@ -17,7 +17,7 @@ export async function testVideoFormatConversion() {
         output: { format: "webm", videoCodec: "vp9", audioCodec: "opus" },
       },
     });
-    const useCase = new UseCase([new ProbeRepository(), new FormatConversionRepository(outputPath)]);
+    const useCase = new MediaPipelineUseCase([new ProbeRepository(), new FormatConversionRepository(outputPath)]);
     const entity = await useCase.execute({
       command: {
         sourcePath: fixture.inputPath,
