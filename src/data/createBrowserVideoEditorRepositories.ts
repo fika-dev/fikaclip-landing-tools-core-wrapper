@@ -21,7 +21,7 @@ import {
   BrowserRouteContextProvider,
 } from "./browser";
 import { FfmpegMediaProbeRepository, FfmpegRuntime, FfmpegVideoFormatImplementation } from "./ffmpeg";
-import { MediabunnyVideoFormatImplementation } from "./mediabunny";
+import { MediabunnyMediaProbeRepository, MediabunnyVideoFormatImplementation } from "./mediabunny";
 
 export type BrowserVideoEditorRuntimeConfig =
   | {
@@ -71,7 +71,7 @@ export function createBrowserVideoEditorRepositories(
   const runtime: MediaCommandRuntime = config.runtime ?? createdRuntime!;
   const mediaProbeRepository = new FfmpegMediaProbeRepository({
     runtime,
-    baseProbeRepository: new BrowserMediaProbeRepository(),
+    baseProbeRepository: new MediabunnyMediaProbeRepository(new BrowserMediaProbeRepository()),
   });
   const capabilityRepository = new BrowserNavigatorCapabilityRepository();
   const getUploadPolicyUseCase = new MediaPipelineUseCase<GetUploadPolicyEntity>([

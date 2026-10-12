@@ -118,7 +118,7 @@ function buildConvertArgs(inputPath: string, outputPath: string, plan: ConvertVi
   if (plan.mode === "remux") {
     args.push("-c", "copy");
   } else {
-    args.push("-threads", "1");
+    args.push("-threads", "2");
     args.push("-c:v", toFfmpegVideoCodec(plan.output.videoCodec));
     args.push(...createVideoEncodingArgs(plan));
 
