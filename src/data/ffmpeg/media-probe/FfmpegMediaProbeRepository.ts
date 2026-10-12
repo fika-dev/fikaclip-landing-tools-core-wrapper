@@ -1,30 +1,31 @@
 import {
-  normalizeAudioCodec,
-  normalizeContainerFormat,
   type AudioTrackInfo,
   type InspectMediaEntity,
+  type MediaCommandRuntime,
   type MediaInspectionResult,
   type MediaProbeRepository,
   type MediaSource,
-  type MediaCommandRuntime,
-} from "../../domain";
-import { BrowserMediaProbeRepository } from "./BrowserMediaProbeRepository";
+  normalizeAudioCodec,
+  normalizeContainerFormat,
+} from "../../../domain";
 
 export type FfmpegMediaProbeRepositoryConfig = {
   runtime: MediaCommandRuntime;
+  baseProbeRepository?: MediaProbeRepository;
 };
 
 export class FfmpegMediaProbeRepository implements MediaProbeRepository {
   readonly id = "ffmpeg-media-probe";
   private readonly runtime: MediaCommandRuntime;
-  private readonly browserProbe = new BrowserMediaProbeRepository();
+  private readonly baseProbeRepository?: MediaProbeRepository;
 
   constructor(config: FfmpegMediaProbeRepositoryConfig) {
     this.runtime = config.runtime;
+    this.baseProbeRepository = config.baseProbeRepository;
   }
 
   async execute(entity: InspectMediaEntity): Promise<InspectMediaEntity> {
-    const browserEntity = await this.browserProbe.execute(entity);
+    const baseEntity = this.baseProbeRepository ? await this.baseProbeRepository.execute(entity) : entity;
     const { command, jobId } = entity;
     const inputPath = createInputPath(command.fileName, command.source);
 
@@ -32,14 +33,13 @@ export class FfmpegMediaProbeRepository implements MediaProbeRepository {
     try {
       await this.runtime.writeFile(inputPath, sourceToFileLike(command.source), { signal: command.job?.signal });
       const audioTrackCount = await detectAudioTrackCount(this.runtime, inputPath, command.job?.signal);
-      const result = mergeProbeResult(browserEntity.result, audioTrackCount);
+      const result = mergeProbeResult(baseEntity.result, audioTrackCount);
       command.job?.onProgress?.({ jobId, phase: "done", ratio: 1 });
-      return { ...browserEntity, result };
+      return { ...baseEntity, result };
     } finally {
       await this.runtime.deleteFile(inputPath);
     }
   }
-
 }
 
 async function detectAudioTrackCount(runtime: MediaCommandRuntime, inputPath: string, signal?: AbortSignal) {
@@ -55,14 +55,19 @@ async function detectAudioTrackCount(runtime: MediaCommandRuntime, inputPath: st
   return tracks;
 }
 
-function mergeProbeResult(browserResult: MediaInspectionResult | undefined, audioTrackIndexes: number[]): MediaInspectionResult {
+function mergeProbeResult(
+  browserResult: MediaInspectionResult | undefined,
+  audioTrackIndexes: number[],
+): MediaInspectionResult {
   const rawAudioCodec = browserResult?.rawAudioCodec;
-  const audioTracks = audioTrackIndexes.map((index): AudioTrackInfo => ({
-    index,
-    streamIndex: index,
-    codec: index === 0 ? normalizeAudioCodec(rawAudioCodec) ?? rawAudioCodec : undefined,
-    isDefault: index === 0,
-  }));
+  const audioTracks = audioTrackIndexes.map(
+    (index): AudioTrackInfo => ({
+      index,
+      streamIndex: index,
+      codec: index === 0 ? normalizeAudioCodec(rawAudioCodec) ?? rawAudioCodec : undefined,
+      isDefault: index === 0,
+    }),
+  );
 
   return {
     ...browserResult,

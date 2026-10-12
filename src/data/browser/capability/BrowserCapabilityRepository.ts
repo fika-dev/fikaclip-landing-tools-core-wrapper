@@ -1,4 +1,4 @@
-import type { BrowserCapabilityEntity, BrowserCapabilityRepository, BrowserCapabilitySnapshot } from "../../domain";
+import type { BrowserCapabilityEntity, BrowserCapabilityRepository, BrowserCapabilitySnapshot } from "../../../domain";
 
 type NavigatorWithOptionalHints = Navigator & {
   deviceMemory?: number;
@@ -23,6 +23,10 @@ export class BrowserNavigatorCapabilityRepository implements BrowserCapabilityRe
         isLikelyInAppBrowser: false,
         isStorageEstimateSupported: false,
         isDeviceMemorySupported: false,
+        webCodecs: {
+          isVideoEncoderSupported: false,
+          isAudioEncoderSupported: false,
+        },
       };
     }
 
@@ -41,6 +45,10 @@ export class BrowserNavigatorCapabilityRepository implements BrowserCapabilityRe
       isLikelyInAppBrowser: detectLikelyInAppBrowser(userAgent),
       isStorageEstimateSupported: Boolean(navigator.storage?.estimate),
       isDeviceMemorySupported: typeof nav.deviceMemory === "number",
+      webCodecs: {
+        isVideoEncoderSupported: typeof globalThis.VideoEncoder !== "undefined",
+        isAudioEncoderSupported: typeof globalThis.AudioEncoder !== "undefined",
+      },
     };
   }
 

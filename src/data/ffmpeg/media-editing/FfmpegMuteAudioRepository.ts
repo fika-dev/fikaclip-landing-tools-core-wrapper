@@ -1,4 +1,4 @@
-import type { MediaEditEntity, MuteAudioRepository } from "../../domain";
+import type { MediaEditEntity, MuteAudioRepository } from "../../../domain";
 import { FfmpegMediaEditRepository, type FfmpegMediaEditRepositoryConfig } from "./FfmpegMediaEditRepository";
 
 export class FfmpegMuteAudioRepository extends FfmpegMediaEditRepository implements MuteAudioRepository {

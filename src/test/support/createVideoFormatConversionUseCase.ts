@@ -1,15 +1,14 @@
 import {
   CodecCompatibilityRepository,
-  CreateVideoFormatConversionPlanRepository,
-  FfmpegMediaProbeRepository,
-  FfmpegVideoFormatTranscodeRepository,
-  TranscodeVideoFormatRepository,
-  UseCase,
   type ConvertVideoFormatCommand,
   type ConvertVideoFormatEntity,
   type ConvertVideoFormatResult,
+  CreateVideoFormatConversionPlanRepository,
+  FfmpegMediaProbeRepository,
+  FfmpegVideoFormatTranscodeRepository,
+  type MediaProbeRepository,
+  UseCase,
 } from "../../index";
-
 import { createTestRuntimeConfig } from "./createTestRuntimeConfig";
 import type { NodeFfmpegMediaEditRuntime } from "./NodeFfmpegMediaEditRuntime";
 
@@ -31,10 +30,19 @@ export type VideoFormatConversionUseCase = {
  */
 export function createVideoFormatConversionUseCase(workDir: string): VideoFormatConversionUseCase {
   const config = createTestRuntimeConfig(workDir);
-  const mediaProbeRepository = new FfmpegMediaProbeRepository(config);
+  const unavailableProbe: MediaProbeRepository = {
+    id: "unavailable-test-probe",
+    execute: async () => {
+      throw new Error("Browser media inspection is unavailable in native FFmpeg tests.");
+    },
+  };
+  const mediaProbeRepository = new FfmpegMediaProbeRepository({
+    ...config,
+    baseProbeRepository: unavailableProbe,
+  });
   const useCase = new UseCase<ConvertVideoFormatEntity>([
     new CreateVideoFormatConversionPlanRepository(mediaProbeRepository, new CodecCompatibilityRepository()),
-    new TranscodeVideoFormatRepository(new FfmpegVideoFormatTranscodeRepository(config)),
+    new FfmpegVideoFormatTranscodeRepository(config),
   ]);
 
   return {

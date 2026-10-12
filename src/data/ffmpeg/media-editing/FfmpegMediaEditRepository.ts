@@ -1,24 +1,23 @@
-import type { FileData, ProgressEventCallback } from "@ffmpeg/ffmpeg";
+import type { ProgressEventCallback } from "@ffmpeg/ffmpeg";
 
 import {
   assertOutputAudioCodec,
-  assertOutputVideoCodec,
-  resolveMediaOutputProfile,
-  type MediaCommandRuntime,
-  type MediaOutputIntent,
-  type ResolvedMediaOutput,
-  MediaRuntimeExhaustedError,
   type AudioCodec,
+  type AudioExtractionCodec,
   type AudioFormat,
+  type MediaCommandRuntime,
   type MediaEditEntity,
   type MediaEditRepository,
+  type MediaOutputIntent,
+  MediaRuntimeExhaustedError,
   type MediaSource,
   type OutputAudioCodec,
   type OutputVideoCodec,
-  type VideoCodec,
+  type ResolvedMediaOutput,
+  resolveMediaOutputProfile,
   type VideoContainerFormat,
-} from "../../domain";
-import { readFfmpegBytes } from "../ffmpeg/FfmpegRuntime";
+} from "../../../domain";
+import { readFfmpegBytes } from "../runtime/FfmpegRuntime";
 
 const VIDEO_MIME_TYPES: Record<VideoContainerFormat, string> = {
   mp4: "video/mp4",
@@ -48,9 +47,10 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
 
   async execute(entity: MediaEditEntity): Promise<MediaEditEntity> {
     const { command, jobId } = entity;
-    const inputPath = createInputPath(command.fileName, command.source);
+    const effectiveFileName = resolveFileName(command.fileName, command.source);
+    const inputPath = createInputPath(effectiveFileName, command.source);
     const extraPaths: string[] = [];
-    const outputPath = createOutputPath(command.fileName, command);
+    const outputPath = createOutputPath(effectiveFileName, command);
     const progressCallback: ProgressEventCallback = ({ progress }) => {
       command.job?.onProgress?.({ jobId, phase: "transcoding", ratio: clamp(progress) });
     };
@@ -60,7 +60,7 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
       this.runtime.onProgress(progressCallback);
       await this.runtime.writeFile(inputPath, sourceToFileLike(command.source), { signal: command.job?.signal });
 
-      const { args, mimeType } = await this.createArgs(command, inputPath, outputPath, extraPaths);
+      const { args, mimeType } = await this.createArgs(command, effectiveFileName, inputPath, outputPath, extraPaths);
       const exitCode = await this.runtime.exec(args, { signal: command.job?.signal });
       if (exitCode !== 0) throw new Error(`ffmpeg ${command.operation} failed with exit code ${exitCode}.`);
 
@@ -98,18 +98,25 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
     }
   }
 
-
   private async createArgs(
     command: MediaEditEntity["command"],
+    effectiveFileName: string | undefined,
     inputPath: string,
     outputPath: string,
     extraPaths: string[],
   ) {
-    const container = resolveOutputContainer(command);
+    const container = resolveOutputContainer(command, effectiveFileName);
+    const sourceContainer = inferVideoFormat(effectiveFileName);
     const profileFor = (intent: MediaOutputIntent) =>
       resolveMediaOutputProfile({
         format: container,
-        intent,
+        intent:
+          container === sourceContainer
+            ? intent
+            : {
+                video: intent.video === "copy" ? "reencode" : intent.video,
+                audio: intent.audio === "copy" ? "reencode" : intent.audio,
+              },
         ...(command.operation === "extract-audio" ? {} : { requested: command.output }),
       });
 
@@ -130,7 +137,15 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
           mimeType: VIDEO_MIME_TYPES[profile.format],
         };
       }
-      case "extract-audio":
+      case "extract-audio": {
+        const audioTrackIndex = command.audioTrackIndex ?? 0;
+        if (!Number.isInteger(audioTrackIndex) || audioTrackIndex < 0) {
+          throw new Error(`Audio track index must be a non-negative integer, but ${audioTrackIndex} was requested.`);
+        }
+        if (!(await hasAudioStream(this.runtime, inputPath, command.job?.signal, audioTrackIndex))) {
+          throw new Error(`Audio track ${audioTrackIndex} does not exist in the input media.`);
+        }
+        assertAudioExtractionCombination(command.format, command.audioCodec ?? defaultAudioCodec(command.format));
         return {
           args: [
             "-i",
@@ -143,7 +158,15 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
           ],
           mimeType: AUDIO_MIME_TYPES[command.format],
         };
+      }
       case "adjust-volume": {
+        if (!(await hasAudioStream(this.runtime, inputPath, command.job?.signal))) {
+          const profile = profileFor({ video: "copy", audio: "drop" });
+          return {
+            args: ["-i", inputPath, ...toCodecArgs(profile), outputPath],
+            mimeType: VIDEO_MIME_TYPES[profile.format],
+          };
+        }
         // The filter rewrites the samples, so audio is re-encoded; the picture is
         // untouched and can be copied.
         const profile = profileFor({ video: "copy", audio: "reencode" });
@@ -154,6 +177,13 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
         };
       }
       case "mute": {
+        if (!(await hasAudioStream(this.runtime, inputPath, command.job?.signal))) {
+          const profile = profileFor({ video: "copy", audio: "drop" });
+          return {
+            args: ["-i", inputPath, ...toCodecArgs(profile), outputPath],
+            mimeType: VIDEO_MIME_TYPES[profile.format],
+          };
+        }
         // Muting everything removes the stream; muting ranges keeps it and has to
         // re-encode what is left.
         const profile = profileFor({ video: "copy", audio: command.muteAll ? "drop" : "reencode" });
@@ -165,12 +195,14 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
           mimeType: VIDEO_MIME_TYPES[profile.format],
         };
       }
-      case "add-audio":
+      case "add-audio": {
         // The mix is new audio, so it is encoded; the picture is copied.
         const addAudioProfile = profileFor({ video: "copy", audio: "reencode" });
         if (command.tracks.length === 0 || command.tracks.length > 3) {
           throw new Error("Audio addition requires between one and three audio tracks.");
         }
+        const sourceHasAudio = await hasAudioStream(this.runtime, inputPath, command.job?.signal);
+        const includeOriginalAudio = command.includeOriginalAudio !== false && sourceHasAudio;
         const trackArgs: string[] = ["-i", inputPath];
         command.tracks.forEach((track) => {
           if (track.loop) trackArgs.push("-stream_loop", "-1");
@@ -182,12 +214,15 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
           await this.runtime.writeFile(extraPaths[index], sourceToFileLike(track.source), {
             signal: command.job?.signal,
           });
+          if (!(await hasAudioStream(this.runtime, extraPaths[index], command.job?.signal))) {
+            throw new Error(`Added audio track ${index} does not contain an audio stream.`);
+          }
         }
         return {
           args: [
             ...trackArgs,
             "-filter_complex",
-            buildMixFilter(command.tracks.length, command.tracks),
+            buildMixFilter(command.tracks, includeOriginalAudio),
             "-map",
             "0:v?",
             "-map",
@@ -198,7 +233,8 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
           ],
           mimeType: VIDEO_MIME_TYPES[addAudioProfile.format],
         };
-      case "watermark":
+      }
+      case "watermark": {
         // The overlay is drawn into the picture, so video is re-encoded; audio is
         // untouched and copied.
         const watermarkProfile = profileFor({ video: "reencode", audio: "copy" });
@@ -210,7 +246,7 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
             ? `scale=${command.layer.width ?? -1}:${command.layer.height ?? -1},`
             : "";
         const opacity =
-          command.layer.opacity === undefined ? "" : `colorchannelmixer=aa=${clamp(command.layer.opacity)},`;
+          command.layer.opacity === undefined ? "" : `colorchannelmixer=aa=${clamp(command.layer.opacity)}`;
         return {
           args: [
             "-i",
@@ -218,12 +254,13 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
             "-i",
             imagePath,
             "-filter_complex",
-            `[1:v]${scale}${opacity}format=rgba[wm];[0:v][wm]overlay=${Math.max(0, command.layer.x)}:${Math.max(0, command.layer.y)}`,
+            `[1:v]${scale}format=rgba${opacity ? `,${opacity}` : ""}[wm];[0:v][wm]overlay=${Math.max(0, command.layer.x)}:${Math.max(0, command.layer.y)}`,
             ...toCodecArgs(watermarkProfile),
             outputPath,
           ],
           mimeType: VIDEO_MIME_TYPES[watermarkProfile.format],
         };
+      }
     }
   }
 }
@@ -245,7 +282,7 @@ function buildMuteFilter(segments: { startSeconds: number; endSeconds: number }[
     .join(",");
 }
 
-function buildMixFilter(count: number, tracks: { volume?: number; startSeconds?: number }[]) {
+function buildMixFilter(tracks: { volume?: number; startSeconds?: number }[], includeOriginalAudio: boolean) {
   const labels = tracks.map((track, index) => {
     const volume = track.volume === undefined ? "" : `volume=${Math.max(0, track.volume)},`;
     const delay = track.startSeconds
@@ -253,13 +290,18 @@ function buildMixFilter(count: number, tracks: { volume?: number; startSeconds?:
       : "";
     return `[${index + 1}:a]${delay}${volume}aresample=async=1[a${index}]`;
   });
-  return `${labels.join(";")};${tracks.map((_, index) => `[a${index}]`).join("")}amix=inputs=${count}:duration=longest:dropout_transition=0[mixed]`;
+  const inputs = [...(includeOriginalAudio ? ["[0:a]"] : []), ...tracks.map((_, index) => `[a${index}]`)].join("");
+  return `${labels.join(";")};${inputs}amix=inputs=${tracks.length + (includeOriginalAudio ? 1 : 0)}:duration=longest:dropout_transition=0,apad[mixed]`;
 }
 
 function sourceToFileLike(source: MediaSource) {
   if (source.type === "file") return source.file;
   if (source.type === "blob") return source.blob;
   return source.url;
+}
+
+function resolveFileName(fileName: string | undefined, source: MediaSource) {
+  return fileName ?? (source.type === "file" ? source.file.name : undefined);
 }
 
 function createInputPath(fileName: string | undefined, source: MediaSource) {
@@ -273,7 +315,8 @@ function createTrackPath(fileName: string | undefined, index: number) {
 
 function createOutputPath(fileName: string | undefined, command: MediaEditEntity["command"]) {
   const baseName = sanitize(fileName ?? "media").replace(/\.[a-z0-9]+$/i, "");
-  const extension = command.operation === "extract-audio" ? command.format : resolveOutputContainer(command);
+  const extension =
+    command.operation === "extract-audio" ? command.format : resolveOutputContainer(command, fileName);
   return `${baseName}.${command.operation}.${extension}`;
 }
 
@@ -286,10 +329,13 @@ function createOutputPath(fileName: string | undefined, command: MediaEditEntity
  * different container produced the original container wearing the requested
  * label.
  */
-function resolveOutputContainer(command: MediaEditEntity["command"]): VideoContainerFormat {
-  if (command.operation === "extract-audio") return inferVideoFormat(command.fileName);
+function resolveOutputContainer(
+  command: MediaEditEntity["command"],
+  effectiveFileName: string | undefined,
+): VideoContainerFormat {
+  if (command.operation === "extract-audio") return inferVideoFormat(effectiveFileName);
 
-  return command.output?.format ?? inferVideoFormat(command.fileName);
+  return command.output?.format ?? inferVideoFormat(effectiveFileName);
 }
 
 /** Turns a resolved profile into the codec flags, including stream removal. */
@@ -305,8 +351,8 @@ function inferVideoFormat(fileName: string | undefined): VideoContainerFormat {
   return extension === "webm" ? "webm" : extension === "mov" ? "mov" : extension === "mkv" ? "mkv" : "mp4";
 }
 
-function defaultAudioCodec(format: AudioFormat): Exclude<AudioCodec, "none" | "copy"> {
-  return format === "mp3" ? "mp3" : format === "ogg" ? "opus" : "aac";
+function defaultAudioCodec(format: AudioFormat): AudioExtractionCodec {
+  return format === "mp3" ? "mp3" : format === "ogg" ? "opus" : format === "wav" ? "pcm" : "aac";
 }
 
 const FFMPEG_VIDEO_ENCODERS: Record<OutputVideoCodec | "copy", string> = {
@@ -324,12 +370,29 @@ const FFMPEG_AUDIO_ENCODERS: Record<OutputAudioCodec | "copy", string> = {
   copy: "copy",
 };
 
-function toVideoCodec(codec: VideoCodec) {
-  return FFMPEG_VIDEO_ENCODERS[assertOutputVideoCodec(codec)];
+function toAudioCodec(codec: AudioExtractionCodec) {
+  if (codec === "pcm") return "pcm_s16le";
+  return FFMPEG_AUDIO_ENCODERS[assertOutputAudioCodec(codec)];
 }
 
-function toAudioCodec(codec: Exclude<AudioCodec, "none">) {
-  return FFMPEG_AUDIO_ENCODERS[assertOutputAudioCodec(codec)];
+async function hasAudioStream(runtime: MediaCommandRuntime, inputPath: string, signal?: AbortSignal, trackIndex = 0) {
+  const exitCode = await runtime.exec(
+    ["-v", "error", "-i", inputPath, "-map", `0:a:${trackIndex}`, "-t", "0.01", "-f", "null", "-"],
+    { signal },
+  );
+  return exitCode === 0;
+}
+
+function assertAudioExtractionCombination(format: AudioFormat, codec: AudioExtractionCodec) {
+  const expected: Record<AudioFormat, AudioExtractionCodec> = {
+    mp3: "mp3",
+    m4a: "aac",
+    wav: "pcm",
+    ogg: "opus",
+  };
+  if (codec !== expected[format]) {
+    throw new Error(`${format} extraction requires ${expected[format]} audio, but ${codec} was requested.`);
+  }
 }
 
 function even(value: number) {

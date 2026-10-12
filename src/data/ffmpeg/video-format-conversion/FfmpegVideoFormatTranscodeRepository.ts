@@ -3,19 +3,18 @@ import type { FileData, ProgressEventCallback } from "@ffmpeg/ffmpeg";
 import {
   assertOutputAudioCodec,
   assertOutputVideoCodec,
-  type MediaCommandRuntime,
-  MediaRuntimeExhaustedError,
   type AudioCodec,
   type ConvertVideoFormatEntity,
   type ConvertVideoFormatPlan,
+  type MediaCommandRuntime,
+  MediaRuntimeExhaustedError,
   type MediaSource,
-  type MediaTranscodeRepository,
   type OutputAudioCodec,
   type OutputVideoCodec,
   type VideoCodec,
   type VideoContainerFormat,
-} from "../../domain";
-import { readFfmpegBytes } from "../ffmpeg/FfmpegRuntime";
+} from "../../../domain";
+import { readFfmpegBytes } from "../runtime/FfmpegRuntime";
 
 const MIME_TYPE_BY_FORMAT: Record<VideoContainerFormat, string> = {
   mp4: "video/mp4",
@@ -28,7 +27,7 @@ export type FfmpegVideoFormatTranscodeRepositoryConfig = {
   runtime: MediaCommandRuntime;
 };
 
-export class FfmpegVideoFormatTranscodeRepository implements MediaTranscodeRepository {
+export class FfmpegVideoFormatTranscodeRepository {
   readonly id = "ffmpeg-video-format-transcode";
 
   private readonly runtime: MediaCommandRuntime;
@@ -80,7 +79,7 @@ export class FfmpegVideoFormatTranscodeRepository implements MediaTranscodeRepos
           fileName: outputPath,
           mimeType: blob.type,
           sizeBytes: blob.size,
-          details: plan,
+          details: { ...plan, engine: "ffmpeg" },
         },
       };
     } catch (error) {
@@ -104,7 +103,6 @@ export class FfmpegVideoFormatTranscodeRepository implements MediaTranscodeRepos
       }
     }
   }
-
 }
 
 function buildConvertArgs(inputPath: string, outputPath: string, plan: ConvertVideoFormatPlan) {

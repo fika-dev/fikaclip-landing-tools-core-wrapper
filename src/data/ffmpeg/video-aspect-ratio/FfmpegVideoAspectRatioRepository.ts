@@ -3,10 +3,11 @@ import type { FileData, ProgressEventCallback } from "@ffmpeg/ffmpeg";
 import {
   assertOutputAudioCodec,
   assertOutputVideoCodec,
-  type MediaCommandRuntime,
-  MediaRuntimeExhaustedError,
+  assertSupportedOutputRequest,
   type AudioCodec,
   type EditVideoAspectRatioEntity,
+  type MediaCommandRuntime,
+  MediaRuntimeExhaustedError,
   type MediaSource,
   type OutputAudioCodec,
   type OutputVideoCodec,
@@ -14,8 +15,9 @@ import {
   type VideoAspectRatioRepository,
   type VideoCodec,
   type VideoContainerFormat,
-} from "../../domain";
-import { readFfmpegBytes } from "../ffmpeg/FfmpegRuntime";
+  defaultOutputCodecsFor,
+} from "../../../domain";
+import { readFfmpegBytes } from "../runtime/FfmpegRuntime";
 
 const MIME_TYPE_BY_FORMAT: Record<VideoContainerFormat, string> = {
   mp4: "video/mp4",
@@ -52,7 +54,7 @@ export class FfmpegVideoAspectRatioRepository implements VideoAspectRatioReposit
     try {
       this.runtime.onProgress(progressCallback);
       await this.runtime.writeFile(inputPath, sourceToFileLike(command.source), { signal: command.job?.signal });
-      output = requireCompleteOutput(command.output);
+      output = resolveOutput(command.fileName, command.source, command.output);
       if (output.videoCodec === "copy") {
         throw new Error("Video ratio editing requires a video codec because padding cannot be used with video copy.");
       }
@@ -81,7 +83,9 @@ export class FfmpegVideoAspectRatioRepository implements VideoAspectRatioReposit
         throw new Error(`ffmpeg aspect ratio transform failed with exit code ${exitCode}.`);
       }
 
-      const bytes = readFfmpegBytes(await this.runtime.readFile(outputPath, undefined, { signal: command.job?.signal }));
+      const bytes = readFfmpegBytes(
+        await this.runtime.readFile(outputPath, undefined, { signal: command.job?.signal }),
+      );
       const mimeType = MIME_TYPE_BY_FORMAT[output.format];
       const blob = new Blob([toBlobPart(bytes)], { type: mimeType });
       command.job?.onProgress?.({ jobId, phase: "done", ratio: 1 });
@@ -117,7 +121,6 @@ export class FfmpegVideoAspectRatioRepository implements VideoAspectRatioReposit
       }
     }
   }
-
 }
 
 function buildCenterPadFilter(aspectRatio: VideoAspectRatio) {
@@ -150,18 +153,31 @@ type SourceProfile = {
 
 type ResolvedAspectRatioOutput = SourceProfile;
 
-function requireCompleteOutput(
+function resolveOutput(
+  fileName: string | undefined,
+  source: MediaSource,
   output: EditVideoAspectRatioEntity["command"]["output"],
 ): ResolvedAspectRatioOutput {
-  if (!output?.format || !output.videoCodec || !output.audioCodec) {
-    throw new Error("Video ratio editing requires an inspected source format and codec profile.");
-  }
+  const sourceFormat = inferVideoFormat(fileName ?? (source.type === "file" ? source.file.name : undefined));
+  const format = output?.format ?? sourceFormat;
+  const defaults = defaultOutputCodecsFor(format);
+  const changedContainer = format !== sourceFormat;
+  const videoCodec = output?.videoCodec ?? defaults.videoCodec;
+  const audioCodec =
+    changedContainer && output?.audioCodec === "copy" ? defaults.audioCodec : output?.audioCodec ?? defaults.audioCodec;
+
+  assertSupportedOutputRequest({ format, videoCodec, audioCodec });
 
   return {
-    format: output.format,
-    videoCodec: output.videoCodec,
-    audioCodec: output.audioCodec,
+    format,
+    videoCodec,
+    audioCodec,
   };
+}
+
+function inferVideoFormat(fileName: string | undefined): VideoContainerFormat {
+  const extension = fileName?.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
+  return extension === "webm" ? "webm" : extension === "mov" ? "mov" : extension === "mkv" ? "mkv" : "mp4";
 }
 
 function sanitizeFileName(fileName: string) {

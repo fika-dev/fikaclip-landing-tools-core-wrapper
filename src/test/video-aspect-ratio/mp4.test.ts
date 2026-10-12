@@ -80,6 +80,29 @@ const FALLBACK_PROFILE = {
  * sources cannot be kept, because AV1 output is withdrawn.
  */
 describe("mp4 컨테이너 화면비 변환", () => {
+  it("출력 설정을 생략해도 MP4 기본 코덱으로 변환된다", async () => {
+    const outcome = await runAspectRatioCase({ sample: PINNED_SAMPLE, aspectRatio: "1:1" });
+
+    assertMediaOutput(outcome, {
+      container: "mp4",
+      mimeType: EXPECTED_MIME_TYPE,
+      videoCodec: "h264",
+      audioCodec: "aac",
+      durationSeconds: 1,
+    });
+  });
+
+  it("컨테이너와 맞지 않는 코덱을 실행 전에 거부한다", async () => {
+    await assert.rejects(
+      () =>
+        runAspectRatioCase({
+          sample: PINNED_SAMPLE,
+          aspectRatio: "1:1",
+          output: { format: "mp4", videoCodec: "vp9", audioCodec: "aac" },
+        }),
+      /mp4 output does not support vp9 video/,
+    );
+  });
   const measurements = new Map<string, SampleMeasurement>();
 
   before(async () => {

@@ -53,6 +53,10 @@ export type BrowserCapabilitySnapshot = {
   isLikelyInAppBrowser: boolean;
   isStorageEstimateSupported: boolean;
   isDeviceMemorySupported: boolean;
+  webCodecs: {
+    isVideoEncoderSupported: boolean;
+    isAudioEncoderSupported: boolean;
+  };
 };
 
 export type GetVideoUploadPolicyCommand = {
@@ -117,6 +121,8 @@ export type ConvertVideoFormatCommand = {
 
 export type ConvertVideoFormatDetails = {
   mode: Exclude<VideoFormatConversionMode, "auto">;
+  engine?: string;
+  fallbackFrom?: string;
   inputMetadata?: MediaMetadata;
   output: ConvertVideoFormatOutput;
   warnings: string[];

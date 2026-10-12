@@ -42,20 +42,50 @@ function plan(
  * downgraded to a copy.
  */
 describe("포맷 변환 계획 수립", () => {
-  it("코덱을 지정하지 않으면 리먹싱으로 계획된다", () => {
-    // Nothing was asked to change except the container, so re-encoding would
-    // only lose quality and time.
+  it("코덱 정보가 없으면 안전한 트랜스코딩으로 계획된다", () => {
     const result = plan({ format: "mkv" });
 
-    assert.equal(result.mode, "remux");
-    assert.equal(result.output.videoCodec, "copy");
-    assert.equal(result.output.audioCodec, "copy");
+    assert.equal(result.mode, "transcode");
+    assert.equal(result.output.videoCodec, "h264");
+    assert.equal(result.output.audioCodec, "aac");
+  });
+
+  it("원본 코덱이 목표 컨테이너와 맞을 때만 자동 리먹싱한다", () => {
+    const compatible = plan(
+      { format: "mkv" },
+      { inputMetadata: { video: { codec: "h264" }, audio: { codec: "aac" } } },
+    );
+    const incompatible = plan(
+      { format: "webm" },
+      { inputMetadata: { video: { codec: "h264" }, audio: { codec: "aac" } } },
+    );
+
+    assert.equal(compatible.mode, "remux");
+    assert.equal(incompatible.mode, "transcode");
+    assert.equal(incompatible.output.videoCodec, "vp9");
+    assert.equal(incompatible.output.audioCodec, "opus");
   });
 
   it("코덱이나 비트레이트를 지정하면 트랜스코딩으로 계획된다", () => {
     assert.equal(plan({ format: "mp4", videoCodec: "h264" }).mode, "transcode");
     assert.equal(plan({ format: "mp4", audioCodec: "aac" }).mode, "transcode");
     assert.equal(plan({ format: "mp4", bitrate: 500_000 }).mode, "transcode");
+  });
+
+  it("호환되지 않는 명시적 리먹싱을 실행 전에 거부한다", () => {
+    assert.throws(
+      () =>
+        plan(
+          { format: "webm" },
+          { mode: "remux", inputMetadata: { video: { codec: "h264" }, audio: { codec: "aac" } } },
+        ),
+      /webm cannot remux h264 video/,
+    );
+  });
+
+  it("0 이하이거나 유효하지 않은 비트레이트를 실행 전에 거부한다", () => {
+    assert.throws(() => plan({ format: "mp4", bitrate: 0 }), /Video bitrate must be a positive finite number/);
+    assert.throws(() => plan({ format: "mp4", bitrate: Number.NaN }), /Video bitrate must be a positive finite number/);
   });
 
   describe("컨테이너별 기본 코덱", () => {

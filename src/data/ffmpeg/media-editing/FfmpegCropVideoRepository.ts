@@ -1,4 +1,4 @@
-import type { CropVideoRepository, MediaEditEntity } from "../../domain";
+import type { CropVideoRepository, MediaEditEntity } from "../../../domain";
 import { FfmpegMediaEditRepository, type FfmpegMediaEditRepositoryConfig } from "./FfmpegMediaEditRepository";
 
 export class FfmpegCropVideoRepository extends FfmpegMediaEditRepository implements CropVideoRepository {
