@@ -9,6 +9,7 @@ export * from "./MediaCommandRuntime";
 export * from "./MediaEditRepository";
 export * from "./MediaEngineUnsupportedError";
 export * from "./MediaFormatNormalization";
+export * from "./MediaProgressReporter";
 export * from "./MediaOutputValidation";
 export * from "./MediaProbeRepository";
 export * from "./MediaRuntimeExhaustedError";
