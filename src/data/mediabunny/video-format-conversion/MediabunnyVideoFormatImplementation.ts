@@ -5,6 +5,7 @@ import type {
   RouteAssessment,
 } from "../../../domain";
 import { MediabunnyVideoFormatTranscodeRepository } from "./MediabunnyVideoFormatTranscodeRepository";
+import { WEBM_VIDEO_HARDWARE_ACCELERATION } from "./WebMVideoEncodingOptions";
 
 const IMPLEMENTATION_ID = Symbol("mediabunny-video-format");
 
@@ -62,6 +63,7 @@ async function supportsVideoEncoding(entity: ConvertVideoFormatEntity) {
       height: Math.max(2, size?.height ?? 360),
       bitrate: entity.plan?.output.bitrate ?? 2_000_000,
       framerate: entity.inputMetadata?.frameRate ?? entity.plan?.inputMetadata?.frameRate ?? 30,
+      hardwareAcceleration: WEBM_VIDEO_HARDWARE_ACCELERATION,
     });
     return support.supported === true;
   } catch {
