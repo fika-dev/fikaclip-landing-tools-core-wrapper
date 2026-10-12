@@ -3,7 +3,6 @@ export * from "./AdjustAudioVolumeRepository";
 export * from "./BrowserCapabilityRepository";
 export * from "./CodecCompatibilityRepository";
 export * from "./CreateVideoFormatConversionPlanRepository";
-export * from "./CropVideoRepository";
 export * from "./ExtractAudioRepository";
 export * from "./InspectMediaRepository";
 export * from "./MediaCommandRuntime";
