@@ -7,7 +7,7 @@ import {
   FfmpegMediaProbeRepository,
   FfmpegVideoFormatTranscodeRepository,
   type MediaProbeRepository,
-  UseCase,
+  MediaPipelineUseCase,
 } from "../../index";
 import { createTestRuntimeConfig } from "./createTestRuntimeConfig";
 import type { NodeFfmpegMediaEditRuntime } from "./NodeFfmpegMediaEditRuntime";
@@ -40,7 +40,7 @@ export function createVideoFormatConversionUseCase(workDir: string): VideoFormat
     ...config,
     baseProbeRepository: unavailableProbe,
   });
-  const useCase = new UseCase<ConvertVideoFormatEntity>([
+  const useCase = new MediaPipelineUseCase<ConvertVideoFormatEntity>([
     new CreateVideoFormatConversionPlanRepository(mediaProbeRepository, new CodecCompatibilityRepository()),
     new FfmpegVideoFormatTranscodeRepository(config),
   ]);

@@ -1,5 +1,5 @@
 import type { EditVideoAspectRatioEntity } from "../entity/VideoAspectRatioTypes";
-import type { UseCaseRepository } from "../usecase/UseCase";
+import type { UseCaseRepository } from "../usecase/MediaPipelineUseCase";
 import type { VideoAspectRatioRepository } from "./VideoAspectRatioRepository";
 
 export class TransformVideoAspectRatioRepository implements UseCaseRepository<EditVideoAspectRatioEntity> {

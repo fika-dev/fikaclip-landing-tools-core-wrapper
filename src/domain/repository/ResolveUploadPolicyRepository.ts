@@ -1,5 +1,5 @@
 import type { GetUploadPolicyEntity } from "../entity";
-import type { UseCaseRepository } from "../usecase/UseCase";
+import type { UseCaseRepository } from "../usecase/MediaPipelineUseCase";
 import type { BrowserCapabilityRepository } from "./BrowserCapabilityRepository";
 import { UploadPolicyRepository } from "./UploadPolicyRepository";
 

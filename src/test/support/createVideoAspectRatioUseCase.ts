@@ -1,6 +1,6 @@
 import {
   FfmpegVideoAspectRatioRepository,
-  UseCase,
+  MediaPipelineUseCase,
   type EditVideoAspectRatioCommand,
   type EditVideoAspectRatioEntity,
   type EditVideoAspectRatioResult,
@@ -24,7 +24,7 @@ export type VideoAspectRatioUseCase = {
  */
 export function createVideoAspectRatioUseCase(workDir: string): VideoAspectRatioUseCase {
   const config = createTestRuntimeConfig(workDir);
-  const useCase = new UseCase<EditVideoAspectRatioEntity>([new FfmpegVideoAspectRatioRepository(config)]);
+  const useCase = new MediaPipelineUseCase<EditVideoAspectRatioEntity>([new FfmpegVideoAspectRatioRepository(config)]);
 
   return {
     runtime: config.runtime,

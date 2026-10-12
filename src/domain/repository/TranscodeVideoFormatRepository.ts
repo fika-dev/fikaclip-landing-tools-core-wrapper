@@ -1,5 +1,5 @@
 import type { ConvertVideoFormatEntity } from "../entity";
-import type { UseCaseRepository } from "../usecase/UseCase";
+import type { UseCaseRepository } from "../usecase/MediaPipelineUseCase";
 import type { MediaTranscodeRepository } from "./MediaTranscodeRepository";
 
 export class TranscodeVideoFormatRepository implements UseCaseRepository<ConvertVideoFormatEntity> {

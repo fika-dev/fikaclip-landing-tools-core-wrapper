@@ -8,7 +8,7 @@ export type TestRuntimeConfig = {
  * The one and only place these tests depart from how an application uses this
  * library.
  *
- * Everything else — the repositories, the `UseCase` wiring, the commands, the
+ * Everything else — the repositories, the `MediaPipelineUseCase` wiring, the commands, the
  * entities — is the real thing, imported from the package entry. Only the
  * execution backend differs: `FfmpegRuntime` drives ffmpeg.wasm through
  * `@ffmpeg/ffmpeg`, which needs the browser's `Worker` global and cannot run in

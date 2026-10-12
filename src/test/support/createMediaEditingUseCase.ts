@@ -1,5 +1,5 @@
 import {
-  UseCase,
+  MediaPipelineUseCase,
   type MediaEditCommand,
   type MediaEditEntity,
   type MediaEditRepository,
@@ -25,14 +25,14 @@ export type TestMediaEditUseCase = MediaEditingUseCase & {
 
 /**
  * Mirrors the application's `createMediaEditingUseCase`: one repository inside a
- * `UseCase<MediaEditEntity>`, with `entity.result` unwrapped for the caller.
+ * `MediaPipelineUseCase<MediaEditEntity>`, with `entity.result` unwrapped for the caller.
  *
  * Kept deliberately identical to `src/video/service/media-editing/MediaEditingUseCase.ts`
  * so the tests assemble the library the way a consumer does rather than inventing
  * a shortcut. If the app's assembly changes, this should change with it.
  */
 export function createMediaEditingUseCase(repository: MediaEditRepository): MediaEditingUseCase {
-  const useCase = new UseCase<MediaEditEntity>([repository]);
+  const useCase = new MediaPipelineUseCase<MediaEditEntity>([repository]);
 
   return {
     execute: async (command) => {

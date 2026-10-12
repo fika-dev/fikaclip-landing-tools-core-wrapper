@@ -36,7 +36,7 @@ fixtures/patterns/            위치·방향을 볼 수 있는 패턴 샘플 (2x
 fixtures/multi-track/         오디오 트랙 3개 샘플 (레벨 20 dB 간격)
 fixtures/manifest.test.ts     샘플이 매니페스트와 일치하는지 확인
 support/
-  create*UseCase.ts           연산별 유즈케이스 조립 (앱의 같은 이름 팩토리와 동일)
+  create*MediaPipelineUseCase.ts           연산별 유즈케이스 조립 (앱의 같은 이름 팩토리와 동일)
   createTestRuntimeConfig.ts  앱과 다른 유일한 지점 — 런타임 seam과 그 이유
   run*Case.ts                 샘플 하나를 돌리고 결과를 측정하는 실행기
   assert*.ts / probe* / decode* / FramePixels.ts   측정과 단정
@@ -196,7 +196,7 @@ describe("<컨테이너> 컨테이너 <연산>", () => {
 
 **10. 동작은 유즈케이스로, 측정은 직접 하세요.**
 새 연산을 테스트할 때 리포지토리를 테스트에서 직접 호출하거나 ffmpeg 명령을 손으로
-적지 마세요. `create<기능>UseCase(workDir)` 팩토리를 만들어 앱의 같은 이름 팩토리와
+적지 마세요. `create<기능>MediaPipelineUseCase(workDir)` 팩토리를 만들어 앱의 같은 이름 팩토리와
 내용을 맞추고, 그걸로 동작시키세요. 반대로 결과 측정은 라이브러리를 쓰지 말고
 ffprobe · 픽셀 · 전체 디코딩으로 직접 하세요. 라이브러리 검증에 라이브러리를 쓰면
 둘이 같이 틀렸을 때 둘 다 통과합니다.
