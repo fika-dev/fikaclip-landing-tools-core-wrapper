@@ -12,6 +12,7 @@ describe("미디어 정보 조회 유즈케이스", () => {
         result: {
           fileName: "sample.mp4",
           metadata: { durationSeconds: 12, frameRate: 29.97 },
+          fps: 29.97,
           format: "mp4",
           videoCodec: "h264",
         },
@@ -26,6 +27,7 @@ describe("미디어 정보 조회 유즈케이스", () => {
 
     assert.equal(result.fileName, "sample.mp4");
     assert.equal(result.metadata.frameRate, 29.97);
+    assert.equal(result.fps, 29.97);
   });
 
   it("호출자가 전달한 작업 ID를 레포지토리에 전달한다", async () => {

@@ -34,6 +34,8 @@ export type MediaInspectionResult = {
   sizeBytes?: number;
   mimeType?: string;
   metadata: MediaMetadata;
+  /** Average playback frame rate derived from packet timestamps when available. */
+  fps?: number;
   format?: VideoContainerFormat;
   videoCodec?: VideoCodec;
   audioCodec?: AudioCodec;

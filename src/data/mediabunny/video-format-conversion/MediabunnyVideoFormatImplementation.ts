@@ -16,8 +16,12 @@ export class MediabunnyVideoFormatImplementation implements RoutableImplementati
 
   async assess(entity: ConvertVideoFormatEntity, context: MediaRoutingContext): Promise<RouteAssessment> {
     const plan = entity.plan;
-    if (!plan || plan.output.format !== "webm") {
-      return { supported: false, score: 0, reasons: ["webm-output-required"] };
+    if (!plan) {
+      return { supported: false, score: 0, reasons: ["conversion-plan-required"] };
+    }
+    const inputIsWebM = entity.inputMetadata?.container?.toLowerCase().includes("webm") === true;
+    if (!inputIsWebM && plan.output.format !== "webm") {
+      return { supported: false, score: 0, reasons: ["webm-input-or-output-required"] };
     }
 
     const needsVideoEncoder = plan.output.videoCodec !== "copy";
@@ -32,12 +36,14 @@ export class MediabunnyVideoFormatImplementation implements RoutableImplementati
     if (needsVideoEncoder && !(await supportsVideoEncoding(entity))) {
       return { supported: false, score: 0, reasons: ["requested-video-codec-encoding-unavailable"] };
     }
-    if (needsAudioEncoder && !(await supportsAudioEncoding())) {
+    if (needsAudioEncoder && !(await supportsAudioEncoding(entity))) {
       return { supported: false, score: 0, reasons: ["requested-audio-codec-encoding-unavailable"] };
     }
 
     let score = plan.mode === "remux" ? 140 : 130;
-    const reasons = [plan.mode === "remux" ? "native-remux" : "native-webm-encoding"];
+    const reasons = [
+      plan.mode === "remux" ? "native-remux" : inputIsWebM ? "native-webm-decoding" : "native-webm-encoding",
+    ];
     if (browser?.deviceMemoryGb !== undefined && browser.deviceMemoryGb <= 4) {
       score += 20;
       reasons.push("memory-constrained-device");
@@ -53,12 +59,21 @@ export class MediabunnyVideoFormatImplementation implements RoutableImplementati
 
 async function supportsVideoEncoding(entity: ConvertVideoFormatEntity) {
   const codec = entity.plan?.output.videoCodec;
-  if (codec !== "vp8" && codec !== "vp9") return false;
+  if (codec === "copy") return true;
+  const codecString =
+    codec === "h264"
+      ? "avc1.42001f"
+      : codec === "h265"
+        ? "hvc1.1.6.L93.B0"
+        : codec === "vp9"
+          ? "vp09.00.10.08"
+          : codec;
+  if (!codecString) return false;
   const size = entity.inputMetadata?.size ?? entity.plan?.inputMetadata?.size;
 
   try {
     const support = await VideoEncoder.isConfigSupported({
-      codec: codec === "vp9" ? "vp09.00.10.08" : "vp8",
+      codec: codecString,
       width: Math.max(2, size?.width ?? 640),
       height: Math.max(2, size?.height ?? 360),
       bitrate: entity.plan?.output.bitrate ?? 2_000_000,
@@ -71,10 +86,14 @@ async function supportsVideoEncoding(entity: ConvertVideoFormatEntity) {
   }
 }
 
-async function supportsAudioEncoding() {
+async function supportsAudioEncoding(entity: ConvertVideoFormatEntity) {
+  const codec = entity.plan?.output.audioCodec;
+  if (codec === "copy" || codec === "none") return true;
+  const codecString = codec === "aac" ? "mp4a.40.2" : codec;
+  if (!codecString) return false;
   try {
     const support = await AudioEncoder.isConfigSupported({
-      codec: "opus",
+      codec: codecString,
       sampleRate: 48_000,
       numberOfChannels: 2,
       bitrate: 128_000,

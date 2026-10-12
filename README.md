@@ -95,3 +95,15 @@ dist/errors.js
 The worker files are required beside the bundled entry point because the FFmpeg
 wrapper creates its worker with a relative module URL. Serve `ffmpeg-core.wasm`
 with `Content-Type: application/wasm`.
+
+## Third-Party Licenses
+
+This package bundles Mediabunny under the Mozilla Public License 2.0 (MPL-2.0).
+MPL-2.0 applies file-level source disclosure requirements to covered Mediabunny
+files and modifications; it does not automatically apply to the rest of an
+application that consumes this package.
+
+Keep `NOTICE.md`, `LICENSES/README.md`, and `LICENSES/MPL-2.0.txt` with
+distributed artifacts. The inventory includes the Mediabunny version, upstream
+source URL, and the other browser media runtime licenses. Review those files
+before changing how the bundle or its third-party source is redistributed.

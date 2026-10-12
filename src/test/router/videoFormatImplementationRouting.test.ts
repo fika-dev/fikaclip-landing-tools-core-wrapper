@@ -24,6 +24,16 @@ describe("영상 포맷 구현 선택", () => {
     assert.equal(result.result?.details.engine, "ffmpeg");
   });
 
+  it("WebM 입력을 MP4로 바꾸면 Mediabunny 구현을 선택한다", async () => {
+    const entity = createEntity("mp4");
+    entity.inputMetadata = { container: "webm", size: { width: 1080, height: 1920 }, frameRate: 30 };
+    entity.plan!.inputMetadata = entity.inputMetadata;
+
+    const result = await createRouter().execute(entity);
+
+    assert.equal(result.result?.details.engine, "mediabunny");
+  });
+
   it("브라우저가 요청한 VP9 설정을 거부하면 WebM 구현을 선택하지 않는다", async () => {
     installSupportedWebCodecs({ video: false });
 

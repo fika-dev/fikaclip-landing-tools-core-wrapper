@@ -7,12 +7,21 @@ import {
   ConversionCanceledError,
   type ConversionVideoOptions,
   Input,
+  MkvOutputFormat,
+  MovOutputFormat,
+  Mp4OutputFormat,
   Output,
+  type OutputFormat,
   UrlSource,
   WebMOutputFormat,
 } from "mediabunny";
 
-import { type ConvertVideoFormatEntity, MediaEngineUnsupportedError, type MediaSource } from "../../../domain";
+import {
+  type ConvertVideoFormatEntity,
+  MediaEngineUnsupportedError,
+  type MediaSource,
+  type VideoContainerFormat,
+} from "../../../domain";
 import { WEBM_VIDEO_HARDWARE_ACCELERATION } from "./WebMVideoEncodingOptions";
 
 export class MediabunnyVideoFormatTranscodeRepository {
@@ -25,10 +34,6 @@ export class MediabunnyVideoFormatTranscodeRepository {
       throw new Error("Mediabunny transcode repository requires a conversion plan.");
     }
 
-    if (plan.output.format !== "webm") {
-      throw new MediaEngineUnsupportedError("mediabunny", "Mediabunny routing currently supports WebM output only.");
-    }
-
     command.job?.onProgress?.({
       jobId,
       phase: plan.mode === "remux" ? "remuxing" : "transcoding",
@@ -37,7 +42,8 @@ export class MediabunnyVideoFormatTranscodeRepository {
 
     const input = new Input({ source: createSource(command.source), formats: ALL_FORMATS });
     const target = new BufferTarget();
-    const output = new Output({ format: new WebMOutputFormat(), target });
+    const outputFormat = createOutputFormat(plan.output.format);
+    const output = new Output({ format: outputFormat, target });
     let conversion: Conversion | undefined;
     const abort = () => void conversion?.cancel();
 
@@ -71,8 +77,8 @@ export class MediabunnyVideoFormatTranscodeRepository {
         throw new Error("Mediabunny conversion completed without output data.");
       }
 
-      const blob = new Blob([target.buffer], { type: "video/webm" });
-      const fileName = createOutputFileName(command.fileName);
+      const blob = new Blob([target.buffer], { type: outputFormat.mimeType });
+      const fileName = createOutputFileName(command.fileName, plan.output.format);
       command.job?.onProgress?.({ jobId, phase: "done", ratio: 1 });
 
       return {
@@ -116,12 +122,13 @@ function createVideoOptions(
   bitrate: number | undefined,
 ): ConversionVideoOptions | undefined {
   if (codec === "copy") return undefined;
-  if (codec !== "vp8" && codec !== "vp9") {
-    throw new MediaEngineUnsupportedError("mediabunny", `Mediabunny WebM output does not support ${codec} video.`);
+  const outputCodec = codec === "h264" ? "avc" : codec === "h265" ? "hevc" : codec;
+  if (outputCodec !== "avc" && outputCodec !== "hevc" && outputCodec !== "vp8" && outputCodec !== "vp9") {
+    throw new MediaEngineUnsupportedError("mediabunny", `Mediabunny does not support ${codec} video.`);
   }
 
   return {
-    codec,
+    codec: outputCodec,
     bitrate,
     forceTranscode: true,
     hardwareAcceleration: WEBM_VIDEO_HARDWARE_ACCELERATION,
@@ -133,16 +140,23 @@ function createAudioOptions(
 ): ConversionAudioOptions | undefined {
   if (codec === "copy") return undefined;
   if (codec === "none") return { discard: true };
-  if (codec !== "opus") {
-    throw new MediaEngineUnsupportedError("mediabunny", `Mediabunny WebM output does not support ${codec} audio.`);
+  if (codec !== "opus" && codec !== "aac" && codec !== "mp3") {
+    throw new MediaEngineUnsupportedError("mediabunny", `Mediabunny does not support ${codec} audio.`);
   }
 
   return { codec, forceTranscode: true };
 }
 
-function createOutputFileName(fileName: string | undefined) {
+function createOutputFormat(format: VideoContainerFormat): OutputFormat {
+  if (format === "mp4") return new Mp4OutputFormat();
+  if (format === "mov") return new MovOutputFormat();
+  if (format === "mkv") return new MkvOutputFormat();
+  return new WebMOutputFormat();
+}
+
+function createOutputFileName(fileName: string | undefined, format: VideoContainerFormat) {
   const baseName = (fileName ?? "output").replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.[a-z0-9]+$/i, "");
-  return `${baseName}.converted.webm`;
+  return `${baseName}.converted.${format}`;
 }
 
 function clampProgress(progress: number) {
