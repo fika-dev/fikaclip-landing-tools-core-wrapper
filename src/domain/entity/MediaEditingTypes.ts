@@ -23,13 +23,6 @@ export type AudioTrack = {
   startSeconds?: number;
 };
 
-export type CropRegion = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
 export type WatermarkLayer = {
   image: MediaSource;
   fileName?: string;
@@ -55,14 +48,6 @@ export type MediaEditOutput = {
 };
 
 export type MediaEditCommand =
-  | {
-      operation: "crop";
-      source: MediaSource;
-      fileName?: string;
-      region: CropRegion;
-      output?: MediaEditOutput;
-      job?: MediaToolJobOptions;
-    }
   | {
       operation: "extract-audio";
       source: MediaSource;

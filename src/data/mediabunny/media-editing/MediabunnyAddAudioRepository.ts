@@ -14,6 +14,7 @@ import {
 
 import {
   type AddAudioRepository,
+  createMediaProgressReporter,
   type MediaEditEntity,
   MediaEngineUnsupportedError,
   type MediaSource,
@@ -30,9 +31,16 @@ export class MediabunnyAddAudioRepository implements AddAudioRepository {
 
     const inputs = [command.source, ...command.tracks.map((track) => track.source)].map(createInput);
     const [sourceInput, ...audioInputs] = inputs;
+    const progress = createMediaProgressReporter(command.job, jobId, [
+      { phase: "loading", weight: 0.05 },
+      { phase: "probing", weight: 0.1 },
+      { phase: "decoding", weight: 0.4 },
+      { phase: "muxing", weight: 0.4 },
+      { phase: "writing", weight: 0.05 },
+    ]);
 
     try {
-      command.job?.onProgress?.({ jobId, phase: "transcoding", ratio: 0 });
+      progress.report("loading", 0);
       throwIfAborted(command.job?.signal);
 
       const videoTrack = await sourceInput.getPrimaryVideoTrack();
@@ -42,7 +50,10 @@ export class MediabunnyAddAudioRepository implements AddAudioRepository {
         throw new MediaEngineUnsupportedError("mediabunny", "The WebM video track cannot be copied by Mediabunny.");
       }
 
+      progress.report("loading", 1);
+      progress.report("probing", 0);
       const duration = await sourceInput.computeDuration();
+      progress.report("probing", 1);
       const mixedAudio = await renderMixedAudio(
         sourceInput,
         audioInputs,
@@ -50,7 +61,9 @@ export class MediabunnyAddAudioRepository implements AddAudioRepository {
         command.includeOriginalAudio !== false,
         command.tracks,
         command.job?.signal,
+        (ratio) => progress.report("decoding", ratio),
       );
+      progress.report("decoding", 1);
       throwIfAborted(command.job?.signal);
 
       const target = new BufferTarget();
@@ -70,25 +83,25 @@ export class MediabunnyAddAudioRepository implements AddAudioRepository {
       await output.start();
 
       const packetSink = new EncodedPacketSink(videoTrack);
-      let packetCount = 0;
+      progress.report("muxing", 0);
       await Promise.all([
         (async () => {
           for await (const packet of packetSink.packets()) {
             throwIfAborted(command.job?.signal);
             await videoSource.add(packet);
-            packetCount += 1;
-            if (packetCount % 30 === 0) {
-              command.job?.onProgress?.({ jobId, phase: "transcoding", ratio: 0.45 });
-            }
+            progress.report("muxing", duration > 0 ? packet.timestamp / duration : 0);
           }
         })(),
         audioSource.add(mixedAudio),
       ]);
+      progress.report("muxing", 1);
+      progress.report("writing", 0);
       await output.finalize();
 
       if (!target.buffer) throw new Error("Mediabunny completed without output data.");
       const blob = new Blob([target.buffer], { type: format.mimeType });
-      command.job?.onProgress?.({ jobId, phase: "done", ratio: 1 });
+      progress.report("writing", 1);
+      progress.done();
 
       return {
         ...entity,
@@ -114,6 +127,7 @@ async function renderMixedAudio(
   includeOriginalAudio: boolean,
   tracks: Extract<MediaEditEntity["command"], { operation: "add-audio" }>["tracks"],
   signal?: AbortSignal,
+  onProgress?: (ratio: number) => void,
 ) {
   const sampleRate = 48_000;
   const frameCount = Math.max(1, Math.ceil(duration * sampleRate));
@@ -133,7 +147,7 @@ async function renderMixedAudio(
     });
   });
 
-  for (const source of sources) {
+  for (const [sourceIndex, source] of sources.entries()) {
     throwIfAborted(signal);
     const audioTrack = await source.input.getPrimaryAudioTrack();
     if (!audioTrack || !(await audioTrack.canDecode())) continue;
@@ -146,6 +160,7 @@ async function renderMixedAudio(
     const repeats = source.loop ? Math.ceil((duration - source.startSeconds) / trackDuration) : 1;
 
     for await (const { buffer, timestamp } of new AudioBufferSink(audioTrack).buffers()) {
+      onProgress?.((sourceIndex + Math.min(1, timestamp / trackDuration)) / Math.max(1, sources.length));
       for (let repeat = 0; repeat < repeats; repeat += 1) {
         const when = source.startSeconds + timestamp + repeat * trackDuration;
         if (when >= duration) break;
@@ -158,6 +173,7 @@ async function renderMixedAudio(
   }
 
   throwIfAborted(signal);
+  onProgress?.(0.95);
   return context.startRendering();
 }
 

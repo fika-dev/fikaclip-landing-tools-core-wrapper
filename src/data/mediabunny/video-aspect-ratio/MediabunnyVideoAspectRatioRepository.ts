@@ -11,6 +11,7 @@ import {
 } from "mediabunny";
 
 import {
+  createMediaProgressReporter,
   type EditVideoAspectRatioEntity,
   MediaEngineUnsupportedError,
   type MediaSource,
@@ -36,8 +37,14 @@ export class MediabunnyVideoAspectRatioRepository implements VideoAspectRatioRep
     const output = new Output({ format, target });
     let conversion: Conversion | undefined;
     const abort = () => void conversion?.cancel();
+    const progress = createMediaProgressReporter(command.job, jobId, [
+      { phase: "loading", weight: 0.05 },
+      { phase: "transcoding", weight: 0.9 },
+      { phase: "writing", weight: 0.05 },
+    ]);
 
     try {
+      progress.report("loading", 0);
       conversion = await Conversion.init({
         input,
         output,
@@ -54,18 +61,21 @@ export class MediabunnyVideoAspectRatioRepository implements VideoAspectRatioRep
         copy: { mode: "preferred" },
         showWarnings: false,
       });
+      progress.report("loading", 1);
       if (!conversion.isValid) {
         throw new MediaEngineUnsupportedError("mediabunny", "Mediabunny cannot process this WebM ratio request.");
       }
 
-      conversion.onProgress = (ratio) =>
-        command.job?.onProgress?.({ jobId, phase: "transcoding", ratio: clamp(ratio) });
+      conversion.onProgress = (ratio) => progress.report("transcoding", ratio);
       command.job?.signal?.addEventListener("abort", abort, { once: true });
       await conversion.execute();
+      progress.report("transcoding", 1);
+      progress.report("writing", 0);
       if (!target.buffer) throw new Error("Mediabunny completed without output data.");
 
       const blob = new Blob([target.buffer], { type: format.mimeType });
-      command.job?.onProgress?.({ jobId, phase: "done", ratio: 1 });
+      progress.report("writing", 1);
+      progress.done();
       return {
         ...entity,
         result: {
@@ -110,8 +120,4 @@ function even(value: number) {
 
 function baseName(fileName?: string) {
   return (fileName ?? "video").replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9._-]/g, "_");
-}
-
-function clamp(value: number) {
-  return Math.max(0, Math.min(1, value));
 }

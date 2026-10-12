@@ -45,7 +45,6 @@ audio-addition/               컨테이너별 파일 하나씩: mp4 / mov / webm
 audio-volume/
 audio-mute/
 audio-extraction/
-video-crop/
 watermark/
 video-aspect-ratio/
 video-format-conversion/      출력 대상 컨테이너별로 파일 하나씩
@@ -268,7 +267,6 @@ received rgb(0, 0, 255)` 로 비율 변환 케이스가 전부 빨간불이 되�
 
 ### 위치는 패턴 픽스처로 봅니다
 
-`video-crop/mp4.test.ts`의 "자를 위치" 그룹이 그 형태입니다.
 
 크롭의 `x` · `y`를 무시하는 구현도 단색 픽스처에서는 전부 통과합니다. 잘린 크기가
 같으면 픽셀도 같기 때문입니다. 사분면 패턴에서는 이렇게 갈립니다.

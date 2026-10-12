@@ -121,22 +121,6 @@ export class FfmpegMediaEditRepository implements MediaEditRepository {
       });
 
     switch (command.operation) {
-      case "crop": {
-        // Cropping changes the frame, so the video has to be re-encoded.
-        const profile = profileFor({ video: "reencode", audio: "reencode" });
-
-        return {
-          args: [
-            "-i",
-            inputPath,
-            "-vf",
-            `crop=${even(command.region.width)}:${even(command.region.height)}:${even(command.region.x)}:${even(command.region.y)}`,
-            ...toCodecArgs(profile),
-            outputPath,
-          ],
-          mimeType: VIDEO_MIME_TYPES[profile.format],
-        };
-      }
       case "extract-audio": {
         const audioTrackIndex = command.audioTrackIndex ?? 0;
         if (!Number.isInteger(audioTrackIndex) || audioTrackIndex < 0) {
@@ -393,10 +377,6 @@ function assertAudioExtractionCombination(format: AudioFormat, codec: AudioExtra
   if (codec !== expected[format]) {
     throw new Error(`${format} extraction requires ${expected[format]} audio, but ${codec} was requested.`);
   }
-}
-
-function even(value: number) {
-  return Math.max(2, Math.floor(value / 2) * 2);
 }
 
 function sanitize(value: string) {

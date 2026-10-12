@@ -8,12 +8,33 @@ import type {
   VideoExportResult,
 } from "./MediaTypes";
 
-export type MediaToolProgressPhase = "loading" | "probing" | "remuxing" | "transcoding" | "writing" | "done";
+export type MediaToolProgressPhase =
+  | "loading"
+  | "probing"
+  | "decoding"
+  | "mixing"
+  | "encoding"
+  | "muxing"
+  | "remuxing"
+  | "transcoding"
+  | "writing"
+  | "done";
 
 export type MediaToolProgress = {
   jobId: string;
   phase: MediaToolProgressPhase;
+  /** Overall job progress. Kept for backward compatibility. */
   ratio?: number;
+  /** Progress inside the current phase. */
+  phaseRatio?: number;
+  /** Overall job progress, equal to `ratio`. */
+  overallRatio?: number;
+  /** Overall work still remaining. */
+  remainingRatio?: number;
+  /** Wall-clock time since this job started. */
+  elapsedSeconds?: number;
+  /** Estimate derived from measured throughput. Undefined until progress is measurable. */
+  estimatedRemainingSeconds?: number;
   message?: string;
 };
 

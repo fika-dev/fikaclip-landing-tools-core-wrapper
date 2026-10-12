@@ -18,6 +18,7 @@ import {
 
 import {
   type ConvertVideoFormatEntity,
+  createMediaProgressReporter,
   MediaEngineUnsupportedError,
   type MediaSource,
   type VideoContainerFormat,
@@ -33,12 +34,13 @@ export class MediabunnyVideoFormatTranscodeRepository {
     if (!plan) {
       throw new Error("Mediabunny transcode repository requires a conversion plan.");
     }
-
-    command.job?.onProgress?.({
-      jobId,
-      phase: plan.mode === "remux" ? "remuxing" : "transcoding",
-      ratio: 0,
-    });
+    const workPhase = plan.mode === "remux" ? "remuxing" : "transcoding";
+    const progress = createMediaProgressReporter(command.job, jobId, [
+      { phase: "loading", weight: 0.05 },
+      { phase: workPhase, weight: 0.9 },
+      { phase: "writing", weight: 0.05 },
+    ]);
+    progress.report("loading", 0);
 
     const input = new Input({ source: createSource(command.source), formats: ALL_FORMATS });
     const target = new BufferTarget();
@@ -57,6 +59,7 @@ export class MediabunnyVideoFormatTranscodeRepository {
         copy: plan.mode === "remux" ? { mode: "forced" } : { mode: "preferred" },
         showWarnings: false,
       });
+      progress.report("loading", 1);
 
       if (!conversion.isValid) {
         throw new MediaEngineUnsupportedError(
@@ -68,10 +71,12 @@ export class MediabunnyVideoFormatTranscodeRepository {
       }
 
       conversion.onProgress = (ratio) => {
-        command.job?.onProgress?.({ jobId, phase: "transcoding", ratio: clampProgress(ratio) });
+        progress.report(workPhase, ratio);
       };
       command.job?.signal?.addEventListener("abort", abort, { once: true });
       await conversion.execute();
+      progress.report(workPhase, 1);
+      progress.report("writing", 0);
 
       if (!target.buffer) {
         throw new Error("Mediabunny conversion completed without output data.");
@@ -79,7 +84,8 @@ export class MediabunnyVideoFormatTranscodeRepository {
 
       const blob = new Blob([target.buffer], { type: outputFormat.mimeType });
       const fileName = createOutputFileName(command.fileName, plan.output.format);
-      command.job?.onProgress?.({ jobId, phase: "done", ratio: 1 });
+      progress.report("writing", 1);
+      progress.done();
 
       return {
         ...entity,
@@ -159,9 +165,6 @@ function createOutputFileName(fileName: string | undefined, format: VideoContain
   return `${baseName}.converted.${format}`;
 }
 
-function clampProgress(progress: number) {
-  return Math.max(0, Math.min(1, progress));
-}
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
