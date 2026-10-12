@@ -29,6 +29,27 @@ describe("영상 포맷 구현 선택", () => {
 
     await assert.rejects(() => createRouter(false).execute(createEntity("webm")), /No repository supports/);
   });
+
+  it("VP8 지원 검사는 실제 변환과 같은 하드웨어 가속 설정을 사용한다", async () => {
+    let checkedConfig: VideoEncoderConfig | undefined;
+    installSupportedWebCodecs({
+      onVideoConfig: (config) => {
+        checkedConfig = config;
+      },
+    });
+    const entity = createEntity("webm");
+    entity.plan!.output.videoCodec = "vp8";
+    entity.plan!.output.bitrate = 7_333_000;
+    entity.inputMetadata = { size: { width: 1080, height: 1920 } };
+
+    await createRouter(false).execute(entity);
+
+    assert.equal(checkedConfig?.codec, "vp8");
+    assert.equal(checkedConfig?.width, 1080);
+    assert.equal(checkedConfig?.height, 1920);
+    assert.equal(checkedConfig?.bitrate, 7_333_000);
+    assert.equal(checkedConfig?.hardwareAcceleration, "no-preference");
+  });
 });
 
 function createRouter(installCodecs = true) {
@@ -54,11 +75,18 @@ function createRouter(installCodecs = true) {
   );
 }
 
-function installSupportedWebCodecs(support: { video?: boolean; audio?: boolean } = {}) {
+function installSupportedWebCodecs(
+  support: {
+    video?: boolean;
+    audio?: boolean;
+    onVideoConfig?: (config: VideoEncoderConfig) => void;
+  } = {},
+) {
   Object.defineProperty(globalThis, "VideoEncoder", {
     configurable: true,
     value: class {
       static isConfigSupported(config: VideoEncoderConfig) {
+        support.onVideoConfig?.(config);
         return Promise.resolve({ config, supported: support.video ?? true });
       }
     },

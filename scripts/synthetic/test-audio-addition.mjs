@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 
-import { FfmpegAddAudioRepository, UseCase } from "../../dist/index.js";
+import { FfmpegAddAudioRepository, MediaPipelineUseCase } from "../../dist/index.js";
 
 import { createSyntheticFixture } from "./createSyntheticFixture.mjs";
 import { assertMedia, assertUseCaseExitCodeMinusOne, probeMedia, runCommand } from "./utils.mjs";
@@ -33,7 +33,10 @@ export async function testAudioAddition() {
       label: "audio addition use case",
       command: { sourcePath: fixture.inputPath },
     });
-    const useCase = new UseCase([new AdditionProbeRepository(), new AdditionRepository(outputPath, trackPath)]);
+    const useCase = new MediaPipelineUseCase([
+      new AdditionProbeRepository(),
+      new AdditionRepository(outputPath, trackPath),
+    ]);
     const entity = await useCase.execute({ command: { sourcePath: fixture.inputPath }, jobId: "audio-addition" });
     await assertMedia(entity.result.path, {
       label: "audio addition use case",

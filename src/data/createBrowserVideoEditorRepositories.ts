@@ -6,14 +6,13 @@ import {
   CreateVideoFormatConversionPlanRepository,
   type GetUploadPolicyEntity,
   type GetVideoUploadPolicyCommand,
-  type InspectMediaEntity,
-  InspectMediaRepository,
+  InspectMediaUseCase,
   type MediaCommandRuntime,
   type MediaInspectionCommand,
   type MediaInspectionResult,
   ResolveUploadPolicyRepository,
   UploadPolicyRepository,
-  UseCase,
+  MediaPipelineUseCase,
   type VideoUploadPolicy,
 } from "../domain";
 import {
@@ -45,6 +44,7 @@ export type BrowserVideoEditorRuntimeConfig =
     };
 
 export type BrowserVideoEditorRepositories = {
+  mediaInspectionUseCase: InspectMediaUseCase;
   videoFormatConversionRepository: VideoFormatConversionRepository;
   /**
    * Releases the shared runtime, and with it the WebAssembly core and its
@@ -56,6 +56,7 @@ export type BrowserVideoEditorRepositories = {
 
 export interface VideoFormatConversionRepository {
   getUploadPolicy(command?: GetVideoUploadPolicyCommand): Promise<VideoUploadPolicy>;
+  /** @deprecated Use `mediaInspectionUseCase.execute()` instead. */
   inspect(command: MediaInspectionCommand): Promise<MediaInspectionResult>;
   convert(command: ConvertVideoFormatCommand): Promise<ConvertVideoFormatResult>;
 }
@@ -73,17 +74,18 @@ export function createBrowserVideoEditorRepositories(
     baseProbeRepository: new BrowserMediaProbeRepository(),
   });
   const capabilityRepository = new BrowserNavigatorCapabilityRepository();
-  const getUploadPolicyUseCase = new UseCase<GetUploadPolicyEntity>([
+  const getUploadPolicyUseCase = new MediaPipelineUseCase<GetUploadPolicyEntity>([
     new ResolveUploadPolicyRepository(capabilityRepository, new UploadPolicyRepository()),
   ]);
-  const inspectMediaUseCase = new UseCase<InspectMediaEntity>([new InspectMediaRepository(mediaProbeRepository)]);
-  const convertVideoFormatUseCase = new UseCase<ConvertVideoFormatEntity>({
+  const mediaInspectionUseCase = new InspectMediaUseCase(mediaProbeRepository);
+  const convertVideoFormatUseCase = new MediaPipelineUseCase<ConvertVideoFormatEntity>({
     before: [new CreateVideoFormatConversionPlanRepository(mediaProbeRepository, new CodecCompatibilityRepository())],
     implementations: [new MediabunnyVideoFormatImplementation(), new FfmpegVideoFormatImplementation({ runtime })],
     contextProviders: [new BrowserRouteContextProvider(capabilityRepository)],
   });
 
   return {
+    mediaInspectionUseCase,
     dispose: () => {
       createdRuntime?.terminate();
     },
@@ -92,13 +94,7 @@ export function createBrowserVideoEditorRepositories(
         const entity = await getUploadPolicyUseCase.execute({ command });
         return requireResult(entity.result, "Upload policy use case did not produce a result.");
       },
-      inspect: async (command) => {
-        const entity = await inspectMediaUseCase.execute({
-          command,
-          jobId: command.job?.jobId ?? createJobId("inspect"),
-        });
-        return requireResult(entity.result, "Media inspection use case did not produce a result.");
-      },
+      inspect: (command) => mediaInspectionUseCase.execute(command),
       convert: async (command) => {
         const entity = await convertVideoFormatUseCase.execute({
           command,

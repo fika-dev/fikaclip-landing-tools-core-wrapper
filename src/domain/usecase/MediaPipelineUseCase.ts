@@ -14,7 +14,7 @@ export type RoutedUseCaseDefinition<Entity> = {
   contextProviders?: readonly RouteContextProvider<Entity>[];
 };
 
-export class UseCase<Entity> {
+export class MediaPipelineUseCase<Entity> {
   private readonly definition: RoutedUseCaseDefinition<Entity>;
 
   constructor(repositories: readonly UseCaseRepository<Entity>[]);

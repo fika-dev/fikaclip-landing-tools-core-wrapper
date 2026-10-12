@@ -10,7 +10,7 @@
 - Only the composition root may know multiple implementation modules and wire them together.
 - Keep one generic router repository in `src/domain`; do not add implementation-specific routers under `src/data`.
 - The domain router gathers environment context through injected providers, asks every implementation for an assessment, and selects one implementation for the whole routed workflow.
-- A routed `UseCase` declares common `before` and `after` repositories plus alternative implementations. Each implementation owns its complete ordered repository array.
+- A routed `MediaPipelineUseCase` declares common `before` and `after` repositories plus alternative implementations. Each implementation owns its complete ordered repository array.
 - An implementation is eligible only when it can execute every requested step. Do not combine repositories from different implementations in one routed execution.
 - Each data implementation owns its support rules and score. It may describe only its own strengths and constraints.
 - A fallback implementation restarts from the entity captured before routing. It must not consume a failed implementation's partial entity.
@@ -20,7 +20,7 @@
 
 ## Naming
 
-- Use `*UseCase` for use cases and app/client workflow factories.
+- Use `*MediaPipelineUseCase` for use cases and app/client workflow factories.
 - Use `*Repository` for repository interfaces and implementations.
 - Entity names should be video-domain words, not library/vendor words.
 - Repository and use case generics should take an entity type, including command-pattern entities.
@@ -37,7 +37,7 @@
 ## Implementation Rules
 
 - Prefer `Repository<Entity> { execute(entity) }`.
-- `UseCase<Entity>` should orchestrate an ordered list of repositories and return the final entity.
+- `MediaPipelineUseCase<Entity>` should orchestrate an ordered list of repositories and return the final entity.
 - Data implementations may use FFmpeg or browser APIs, but domain entities and repositories should stay vendor-neutral.
 - Add new capabilities by implementing repositories under `src/data`; clients assemble them into use cases.
 - Match existing app rules when a local convention exists, but do not force a common interface when it makes the code less type-safe.

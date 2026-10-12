@@ -80,7 +80,7 @@
 
 ### 3.6 회귀 영향 범위
 
-- 공유 모듈: `UseCase`, `RouterRepository`, 브라우저 저장소 팩토리
+- 공유 모듈: `MediaPipelineUseCase`, `RouterRepository`, 브라우저 저장소 팩토리
 - 주요 영향: 변환, 오디오 추출·추가, 음량, 음소거, 화면비, 워터마크
 - 검증 결과: 타입 검사, 전체 미디어 테스트, 합성 테스트 통과
 

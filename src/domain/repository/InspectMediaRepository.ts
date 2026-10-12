@@ -1,5 +1,5 @@
 import type { InspectMediaEntity } from "../entity";
-import type { UseCaseRepository } from "../usecase/UseCase";
+import type { UseCaseRepository } from "../usecase/MediaPipelineUseCase";
 import type { MediaProbeRepository } from "./MediaProbeRepository";
 
 export class InspectMediaRepository implements UseCaseRepository<InspectMediaEntity> {

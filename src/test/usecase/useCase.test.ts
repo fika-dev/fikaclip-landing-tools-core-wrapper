@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { MediaRoutingContext, Repository, RoutableImplementation } from "../../index";
-import { UseCase } from "../../index";
+import { MediaPipelineUseCase } from "../../index";
 
 type TestEntity = { steps: string[] };
 
-describe("UseCase", () => {
+describe("MediaPipelineUseCase", () => {
   it("공통 단계와 선택된 구현의 전체 단계만 실행한다", async () => {
     const mobile = createImplementation("mobile", 100, [createStep("mobile-decode"), createStep("mobile-encode")]);
     const desktop = createImplementation("desktop", 50, [createStep("desktop-decode"), createStep("desktop-encode")]);
-    const useCase = new UseCase<TestEntity>({
+    const useCase = new MediaPipelineUseCase<TestEntity>({
       before: [createStep("probe"), createStep("plan")],
       implementations: [mobile, desktop],
       after: [createStep("validate")],
@@ -25,7 +25,7 @@ describe("UseCase", () => {
   it("전체 요구사항을 지원하지 않는 구현은 일부 repository도 실행하지 않는다", async () => {
     const incomplete = createImplementation("incomplete", 1_000, [createStep("incomplete-only")], false);
     const complete = createImplementation("complete", 10, [createStep("complete-one"), createStep("complete-two")]);
-    const useCase = new UseCase<TestEntity>({ implementations: [incomplete, complete] });
+    const useCase = new MediaPipelineUseCase<TestEntity>({ implementations: [incomplete, complete] });
 
     const result = await useCase.execute({ steps: [] });
 
@@ -33,7 +33,7 @@ describe("UseCase", () => {
   });
 
   it("구현 후보가 없는 기존 유즈케이스는 repository를 순서대로 실행한다", async () => {
-    const useCase = new UseCase<TestEntity>([createStep("one"), createStep("two")]);
+    const useCase = new MediaPipelineUseCase<TestEntity>([createStep("one"), createStep("two")]);
 
     const result = await useCase.execute({ steps: [] });
 

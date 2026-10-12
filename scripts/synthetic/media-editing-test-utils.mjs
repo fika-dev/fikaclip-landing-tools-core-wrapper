@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { UseCase } from "../../dist/index.js";
+import { MediaPipelineUseCase } from "../../dist/index.js";
 
 import { createSyntheticFixture } from "./createSyntheticFixture.mjs";
 import { assertMedia, assertUseCaseExitCodeMinusOne, probeMedia, runCommand } from "./utils.mjs";
@@ -15,7 +15,10 @@ export async function runMediaEditTest({ label, outputName, args, expected, extr
       label,
       command: { sourcePath: fixture.inputPath },
     });
-    const useCase = new UseCase([new SyntheticProbeRepository(), new SyntheticMediaEditRepository(outputPath, args)]);
+    const useCase = new MediaPipelineUseCase([
+      new SyntheticProbeRepository(),
+      new SyntheticMediaEditRepository(outputPath, args),
+    ]);
     const entity = await useCase.execute({ command: { sourcePath: fixture.inputPath }, jobId: label });
     await assertMedia(entity.result.path, { label, ...expected });
   } finally {

@@ -13,6 +13,7 @@ import {
 } from "mediabunny";
 
 import { type ConvertVideoFormatEntity, MediaEngineUnsupportedError, type MediaSource } from "../../../domain";
+import { WEBM_VIDEO_HARDWARE_ACCELERATION } from "./WebMVideoEncodingOptions";
 
 export class MediabunnyVideoFormatTranscodeRepository {
   readonly id = "mediabunny-video-format-transcode";
@@ -123,7 +124,7 @@ function createVideoOptions(
     codec,
     bitrate,
     forceTranscode: true,
-    hardwareAcceleration: "prefer-hardware",
+    hardwareAcceleration: WEBM_VIDEO_HARDWARE_ACCELERATION,
   };
 }
 

@@ -10,13 +10,13 @@ The source is split into two main layers:
 
 - `src/domain/entity`: video-domain words and workflow state, such as media sources, codecs, upload policies, conversion entities, metadata, and results.
 - `src/domain/repository`: repository ports plus domain repository steps. Repositories follow a common `Repository<Entity>` shape whenever practical.
-- `src/domain/usecase`: generic workflow runner. `UseCase<Entity>` executes repositories in the order supplied by the client.
+- `src/domain/usecase`: generic workflow runner. `MediaPipelineUseCase<Entity>` executes repositories in the order supplied by the client.
 - `src/data`: concrete repository implementations, grouped by capability or feature. Browser probing, browser capability detection, and FFmpeg transcoding live here.
 
 Current use case shape:
 
 ```ts
-const convertVideoFormatUseCase = new UseCase<ConvertVideoFormatEntity>([
+const convertVideoFormatUseCase = new MediaPipelineUseCase<ConvertVideoFormatEntity>([
   new CreateVideoFormatConversionPlanRepository(mediaProbeRepository, codecCompatibilityRepository),
   new TranscodeVideoFormatRepository(mediaTranscodeRepository),
 ]);
@@ -43,7 +43,7 @@ Therefore, at least one frame edge is always occupied by the video; there is nev
 
 ## Repository Rules
 
-Use `*Repository` for repository classes and interfaces. Use `*UseCase` for use case classes, factories, and client-side assembled workflows.
+Use `*Repository` for repository classes and interfaces. Use `*MediaPipelineUseCase` for use case classes, factories, and client-side assembled workflows.
 
 Keep one exported repository or use case concept per file. Do not create bucket files that group multiple repository interfaces, repository classes, constants, or objects such as `MediaRepositories.ts` or `UseCaseRepositories.ts`. Use `index.ts` only as a barrel export file. Entity files may group tightly related vocabulary when the names describe the same domain area.
 
@@ -64,13 +64,13 @@ When adding a feature:
 1. Add or extend entity types in `src/domain/entity`.
 2. Add repository ports or domain repository steps in `src/domain/repository`.
 3. Implement concrete repositories in `src/data/<feature-or-capability>`.
-4. Let the consuming app assemble `new UseCase<Entity>([repositories...])` in the order it needs.
+4. Let the consuming app assemble `new MediaPipelineUseCase<Entity>([repositories...])` in the order it needs.
 5. Keep vendor-specific details, such as FFmpeg arguments and runtime cleanup, inside `src/data`.
 6. Keep each new repository interface or implementation in its own file and export it from the nearest `index.ts`.
 
-The library should not need a new exported custom use case class for every feature. Prefer one generic `UseCase<Entity>` plus composable repositories.
+The library should not need a new exported custom use case class for every feature. Prefer one generic `MediaPipelineUseCase<Entity>` plus composable repositories.
 
-Media editing capabilities use `MediaEditEntity` with a discriminated `command.operation`. The data layer exposes feature repositories such as `FfmpegCropVideoRepository`, `FfmpegExtractAudioRepository`, `FfmpegAdjustAudioVolumeRepository`, `FfmpegMuteAudioRepository`, `FfmpegAddAudioRepository`, and `FfmpegWatermarkVideoRepository`. Clients compose one of these repositories with the generic `UseCase<MediaEditEntity>`; no feature-specific workflow runner is required.
+Media editing capabilities use `MediaEditEntity` with a discriminated `command.operation`. The data layer exposes feature repositories such as `FfmpegCropVideoRepository`, `FfmpegExtractAudioRepository`, `FfmpegAdjustAudioVolumeRepository`, `FfmpegMuteAudioRepository`, `FfmpegAddAudioRepository`, and `FfmpegWatermarkVideoRepository`. Clients compose one of these repositories with the generic `MediaPipelineUseCase<MediaEditEntity>`; no feature-specific workflow runner is required.
 
 ## Build
 

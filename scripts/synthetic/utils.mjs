@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import assert from "node:assert/strict";
 import { promisify } from "node:util";
 
-import { UseCase } from "../../dist/index.js";
+import { MediaPipelineUseCase } from "../../dist/index.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -55,7 +55,7 @@ export function assertEqual(label, actual, expected) {
 }
 
 export async function assertUseCaseExitCodeMinusOne({ label, command }) {
-  const useCase = new UseCase([new ExitCodeFailureRepository(label)]);
+  const useCase = new MediaPipelineUseCase([new ExitCodeFailureRepository(label)]);
 
   await assert.rejects(
     () => useCase.execute({ command }),
